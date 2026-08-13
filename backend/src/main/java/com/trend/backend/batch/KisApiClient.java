@@ -2,6 +2,7 @@ package com.trend.backend.batch;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -25,39 +26,48 @@ public class KisApiClient {
     private long tokenExpiryTime = 0;
 
     /**
-     * 한국투자증권 OAuth2 접근 토큰 발급
+     * 한국투자증권 OAuth2 접근 토큰 발급 (모의/실전 자동 시도)
      */
     public synchronized String getAccessToken() {
         if (cachedAccessToken != null && System.currentTimeMillis() < tokenExpiryTime) {
             return cachedAccessToken;
         }
 
-        if ("dummy_app_key".equals(appKey)) {
+        if ("dummy_app_key".equals(appKey) || appKey == null || appKey.isBlank()) {
             log.info("KIS APP_KEY is unconfigured. Using fallback price mode.");
             return null;
         }
 
-        try {
-            Map<String, String> body = Map.of(
-                    "grant_type", "client_credentials",
-                    "appkey", appKey,
-                    "appsecret", appSecret
-            );
+        String[] domainsToTry = {
+            domain,
+            "https://openapi.koreainvestment.com:9443",
+            "https://openapivts.koreainvestment.com:29443"
+        };
 
-            KisTokenDto tokenDto = restClient.post()
-                    .uri(domain + "/oauth2/tokenP")
-                    .body(body)
-                    .retrieve()
-                    .body(KisTokenDto.class);
+        for (String targetDomain : domainsToTry) {
+            try {
+                Map<String, String> body = Map.of(
+                        "grant_type", "client_credentials",
+                        "appkey", appKey,
+                        "appsecret", appSecret
+                );
 
-            if (tokenDto != null && tokenDto.getAccessToken() != null) {
-                this.cachedAccessToken = tokenDto.getAccessToken();
-                this.tokenExpiryTime = System.currentTimeMillis() + (86000 * 1000L); // ~24h
-                log.info("Successfully issued Korea Investment Open API Access Token.");
-                return cachedAccessToken;
+                KisTokenDto tokenDto = restClient.post()
+                        .uri(targetDomain + "/oauth2/tokenP")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(KisTokenDto.class);
+
+                if (tokenDto != null && tokenDto.getAccessToken() != null) {
+                    this.cachedAccessToken = tokenDto.getAccessToken();
+                    this.tokenExpiryTime = System.currentTimeMillis() + (80000 * 1000L);
+                    log.info("Successfully issued KIS Access Token from {}!", targetDomain);
+                    return cachedAccessToken;
+                }
+            } catch (Exception e) {
+                log.warn("KIS OAuth Token attempt failed at {}: {}", targetDomain, e.getMessage());
             }
-        } catch (Exception e) {
-            log.warn("Failed to get KIS Access Token: {}", e.getMessage());
         }
 
         return null;
@@ -70,23 +80,37 @@ public class KisApiClient {
         String token = getAccessToken();
 
         if (token != null) {
-            try {
-                KisPriceDto priceDto = restClient.get()
-                        .uri(domain + "/uapi/domestic-stock/v1/quoting/inquire-price?fid_cond_mrkt_div_code=J&fid_input_iscd=" + stockCode)
-                        .header("authorization", "Bearer " + token)
-                        .header("appkey", appKey)
-                        .header("appsecret", appSecret)
-                        .header("tr_id", "FHKST01010100")
-                        .retrieve()
-                        .body(KisPriceDto.class);
+            String[] domainsToTry = {
+                domain,
+                "https://openapi.koreainvestment.com:9443",
+                "https://openapivts.koreainvestment.com:29443"
+            };
 
-                if (priceDto != null && priceDto.getOutput() != null && priceDto.getOutput().getCurrentPrice() != null) {
-                    double price = Double.parseDouble(priceDto.getOutput().getCurrentPrice());
-                    log.info("Fetched live stock price from KIS API [{}]: ₩{}", stockCode, price);
-                    return price;
+            for (String targetDomain : domainsToTry) {
+                try {
+                    String uri = targetDomain + "/uapi/domestic-stock/v1/quoting/inquire-price?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=" + stockCode;
+                    
+                    KisPriceDto priceDto = restClient.get()
+                            .uri(uri)
+                            .header("content-type", "application/json")
+                            .header("authorization", "Bearer " + token)
+                            .header("appkey", appKey)
+                            .header("appsecret", appSecret)
+                            .header("tr_id", "FHKST01010100")
+                            .header("custtype", "P")
+                            .retrieve()
+                            .body(KisPriceDto.class);
+
+                    if (priceDto != null && priceDto.getOutput() != null && priceDto.getOutput().getCurrentPrice() != null) {
+                        double price = Double.parseDouble(priceDto.getOutput().getCurrentPrice());
+                        if (price > 0) {
+                            log.info("Fetched live stock price from KIS API [{}] @ {}: ₩{}", stockCode, targetDomain, price);
+                            return price;
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to fetch KIS stock price for {} @ {}: {}", stockCode, targetDomain, e.getMessage());
                 }
-            } catch (Exception e) {
-                log.warn("Failed to fetch KIS stock price for {}: {}", stockCode, e.getMessage());
             }
         }
 

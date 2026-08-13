@@ -1,3 +1,7 @@
+# Security & Secrets
+application-secret.yml
+**/application-secret.yml
+
 # Gradle & Java
 .gradle/
 build/

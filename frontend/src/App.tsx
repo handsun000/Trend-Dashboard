@@ -10,12 +10,8 @@ import SockJS from 'sockjs-client';
 function App() {
   useEffect(() => {
     try {
-      // STOMP WebSocket connection using Vite proxy path
       const client = new Client({
         webSocketFactory: () => new SockJS('/ws'),
-        debug: function (str) {
-          console.log(str);
-        },
         reconnectDelay: 5000,
         heartbeatIncoming: 4000,
         heartbeatOutgoing: 4000,
@@ -35,7 +31,7 @@ function App() {
               toast.success(`🔔 [${alertData.ticker}] 목표가 ${alertData.price?.toLocaleString() || alertData.price}원 도달!`, {
                 position: "bottom-right",
                 theme: "dark",
-                className: "border border-emerald-500/40 bg-zinc-950/90 text-white rounded-2xl shadow-2xl backdrop-blur-xl font-bold",
+                className: "border border-white/10 bg-slate-900/90 text-slate-100 rounded-2xl shadow-2xl backdrop-blur-xl font-medium",
               });
             } catch (e) {
               console.error(e);
@@ -59,9 +55,17 @@ function App() {
   }, []);
 
   return (
-    <div className="flex h-screen bg-black overflow-hidden font-sans selection:bg-emerald-500 selection:text-black">
+    <div className="relative flex h-screen bg-slate-950 text-slate-300 overflow-hidden font-sans selection:bg-emerald-400 selection:text-slate-950">
+      {/* 1. 진짜 오로라 배경 (Aurora Background) */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute -top-32 -left-32 w-[35rem] h-[35rem] rounded-full bg-emerald-500/20 blur-[120px]"></div>
+        <div className="absolute top-1/3 -right-32 w-[35rem] h-[35rem] rounded-full bg-indigo-500/20 blur-[120px]"></div>
+        <div className="absolute -bottom-32 left-1/3 w-[40rem] h-[40rem] rounded-full bg-teal-500/15 blur-[120px]"></div>
+      </div>
+
+      {/* Main Layout */}
       <Sidebar />
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-zinc-950/90 backdrop-blur-2xl rounded-l-[2rem] border-l border-zinc-800/60 shadow-2xl ml-[-1rem] z-20">
+      <div className="relative z-10 flex-1 flex flex-col h-full overflow-hidden bg-slate-900/20 backdrop-blur-md">
         <Header />
         <main className="flex-1 overflow-y-auto">
           <Dashboard />
