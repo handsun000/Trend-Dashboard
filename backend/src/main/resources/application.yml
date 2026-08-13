@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: backend
+
+kis:
+  open-api:
+    app-key: ${KIS_APP_KEY:dummy_app_key}
+    app-secret: ${KIS_APP_SECRET:dummy_app_secret}
+    domain: ${KIS_DOMAIN:https://openapivts.koreainvestment.com:29443}
+
+  datasource:
+    url: jdbc:h2:mem:trend_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+
+  h2:
+    console:
+      enabled: true
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  elasticsearch:
+    uris: http://localhost:9200
+    connection-timeout: 1s
+    socket-timeout: 1s
+
+  batch:
+    jdbc:
+      initialize-schema: always
+    job:
+      enabled: false

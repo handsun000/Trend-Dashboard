@@ -1,0 +1,19 @@
+# Gradle & Java
+.gradle/
+build/
+backend/build/
+backend/.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Node & Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.tmp/
+frontend/*.tsbuildinfo
+
+# IDE & OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+*.log

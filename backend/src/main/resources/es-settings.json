@@ -1,0 +1,29 @@
+{
+  "analysis": {
+    "tokenizer": {
+      "nori_user_dict": {
+        "type": "nori_tokenizer",
+        "decompound_mode": "mixed"
+      }
+    },
+    "filter": {
+      "edge_ngram_filter": {
+        "type": "edge_ngram",
+        "min_gram": 1,
+        "max_gram": 20
+      }
+    },
+    "analyzer": {
+      "korean_analyzer": {
+        "type": "custom",
+        "tokenizer": "nori_user_dict",
+        "filter": ["lowercase", "edge_ngram_filter"]
+      },
+      "korean_search_analyzer": {
+        "type": "custom",
+        "tokenizer": "nori_user_dict",
+        "filter": ["lowercase"]
+      }
+    }
+  }
+}

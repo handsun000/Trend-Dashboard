@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: trend-dashboard-db
+    environment:
+      POSTGRES_USER: trend_user
+      POSTGRES_PASSWORD: trend_password
+      POSTGRES_DB: trend_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: always
+
+  elasticsearch:
+    image: elasticsearch:8.10.2
+    container_name: trend-dashboard-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    command: >
+      bash -c "
+        if [ ! -d plugins/analysis-nori ]; then
+          bin/elasticsearch-plugin install --batch analysis-nori;
+        fi;
+        docker-entrypoint.sh eswrapper
+      "
+    restart: always
+
+  redis:
+    image: redis:7
+    container_name: trend-dashboard-redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+volumes:
+  db_data:
+  es_data:
