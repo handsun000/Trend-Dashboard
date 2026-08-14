@@ -55,19 +55,21 @@ function App() {
   }, []);
 
   return (
-    <div className="relative flex h-screen bg-slate-950 text-slate-300 overflow-hidden font-sans selection:bg-emerald-400 selection:text-slate-950">
-      {/* 1. 진짜 오로라 배경 (Aurora Background) */}
+    <div className="relative flex h-screen bg-[#0B132B] text-slate-200 overflow-hidden font-sans selection:bg-emerald-400 selection:text-slate-950">
+      {/* Deep Navy to Cyan Ambient Mesh Gradient Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute -top-32 -left-32 w-[35rem] h-[35rem] rounded-full bg-emerald-500/20 blur-[120px]"></div>
-        <div className="absolute top-1/3 -right-32 w-[35rem] h-[35rem] rounded-full bg-indigo-500/20 blur-[120px]"></div>
-        <div className="absolute -bottom-32 left-1/3 w-[40rem] h-[40rem] rounded-full bg-teal-500/15 blur-[120px]"></div>
+        <div className="absolute -top-40 -left-40 w-[45rem] h-[45rem] rounded-full bg-gradient-to-br from-emerald-500/20 via-teal-500/10 to-transparent blur-[140px]"></div>
+        <div className="absolute top-1/4 -right-40 w-[45rem] h-[45rem] rounded-full bg-gradient-to-bl from-cyan-500/20 via-blue-600/10 to-transparent blur-[140px]"></div>
+        <div className="absolute -bottom-40 left-1/3 w-[50rem] h-[50rem] rounded-full bg-gradient-to-tr from-teal-500/15 via-indigo-600/10 to-transparent blur-[150px]"></div>
+        {/* Subtle dynamic geometric grid pattern */}
+        <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:32px_32px] opacity-40"></div>
       </div>
 
       {/* Main Layout */}
       <Sidebar />
-      <div className="relative z-10 flex-1 flex flex-col h-full overflow-hidden bg-slate-900/20 backdrop-blur-md">
+      <div className="relative z-10 flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-white/[0.01]">
         <Header />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <Dashboard />
         </main>
       </div>

@@ -39,9 +39,9 @@ public class KisApiClient {
         }
 
         String[] domainsToTry = {
-            domain,
-            "https://openapi.koreainvestment.com:9443",
-            "https://openapivts.koreainvestment.com:29443"
+                domain,
+                "https://openapi.koreainvestment.com:9443",
+                "https://openapivts.koreainvestment.com:29443"
         };
 
         for (String targetDomain : domainsToTry) {
@@ -49,8 +49,7 @@ public class KisApiClient {
                 Map<String, String> body = Map.of(
                         "grant_type", "client_credentials",
                         "appkey", appKey,
-                        "appsecret", appSecret
-                );
+                        "appsecret", appSecret);
 
                 KisTokenDto tokenDto = restClient.post()
                         .uri(targetDomain + "/oauth2/tokenP")
@@ -73,23 +72,22 @@ public class KisApiClient {
         return null;
     }
 
-    /**
-     * 국내 주식 현재가 시세 조회 (FID: FHKST01010100)
-     */
-    public Double fetchStockPrice(String stockCode) {
+    public KisPriceDto.Output fetchStockQuote(String stockCode) {
         String token = getAccessToken();
 
         if (token != null) {
             String[] domainsToTry = {
-                domain,
-                "https://openapi.koreainvestment.com:9443",
-                "https://openapivts.koreainvestment.com:29443"
+                    domain,
+                    "https://openapi.koreainvestment.com:9443",
+                    "https://openapivts.koreainvestment.com:29443"
             };
 
             for (String targetDomain : domainsToTry) {
                 try {
-                    String uri = targetDomain + "/uapi/domestic-stock/v1/quoting/inquire-price?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=" + stockCode;
-                    
+                    String uri = targetDomain
+                            + "/uapi/domestic-stock/v1/quotations/inquire-price?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD="
+                            + stockCode;
+
                     KisPriceDto priceDto = restClient.get()
                             .uri(uri)
                             .header("content-type", "application/json")
@@ -101,20 +99,27 @@ public class KisApiClient {
                             .retrieve()
                             .body(KisPriceDto.class);
 
-                    if (priceDto != null && priceDto.getOutput() != null && priceDto.getOutput().getCurrentPrice() != null) {
-                        double price = Double.parseDouble(priceDto.getOutput().getCurrentPrice());
-                        if (price > 0) {
-                            log.info("Fetched live stock price from KIS API [{}] @ {}: ₩{}", stockCode, targetDomain, price);
-                            return price;
-                        }
+                    if (priceDto != null && priceDto.getOutput() != null
+                            && priceDto.getOutput().getCurrentPrice() != null) {
+                        return priceDto.getOutput();
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to fetch KIS stock price for {} @ {}: {}", stockCode, targetDomain, e.getMessage());
+                    log.warn("Failed to fetch KIS stock quote for {} @ {}: {}", stockCode, targetDomain, e.getMessage());
                 }
             }
         }
+        return null;
+    }
 
-        // Fallback default stock price if API Key is not set or request fails
-        return "005930".equals(stockCode) ? 83200.0 : 173500.0;
+    public Double fetchStockPrice(String stockCode) {
+        KisPriceDto.Output output = fetchStockQuote(stockCode);
+        if (output != null && output.getCurrentPrice() != null) {
+            try {
+                return Double.parseDouble(output.getCurrentPrice());
+            } catch (Exception e) {
+                log.warn("Invalid current price parsing: {}", output.getCurrentPrice());
+            }
+        }
+        return 75000.0;
     }
 }

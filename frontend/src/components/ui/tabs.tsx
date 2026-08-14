@@ -10,7 +10,7 @@ function Tabs({
     <TabsPrimitive.Root
       data-slot="tabs"
       data-orientation={orientation}
-      className={cn("group/tabs flex gap-2 data-horizontal:flex-col", className)}
+      className={cn("flex flex-col gap-2.5 w-full flex-1 min-h-0 overflow-hidden", className)}
       {...props}
     />
   )
@@ -24,7 +24,7 @@ function TabsList({
     <TabsPrimitive.List
       data-slot="tabs-list"
       className={cn(
-        "inline-flex items-center justify-center p-1.5 rounded-2xl bg-slate-900/40 border border-white/10 backdrop-blur-xl gap-2 h-auto text-slate-300 shadow-2xl",
+        "inline-flex items-center p-1 rounded-xl bg-white/[0.03] border border-white/5 backdrop-blur-xl gap-1 h-auto text-slate-400",
         className
       )}
       {...props}
@@ -37,8 +37,8 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-trigger"
       className={cn(
-        "inline-flex items-center justify-center px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all duration-300 cursor-pointer text-slate-300 hover:text-white disabled:pointer-events-none disabled:opacity-50",
-        "data-[active]:bg-gradient-to-r data-[active]:from-emerald-500 data-[active]:to-teal-400 data-[active]:text-slate-950 data-[active]:font-extrabold data-[active]:shadow-lg data-[active]:shadow-emerald-500/20 data-[active]:scale-[1.02]",
+        "inline-flex items-center justify-center px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer text-slate-400 hover:text-slate-200 hover:bg-white/[0.02] disabled:pointer-events-none disabled:opacity-50",
+        "data-[active]:bg-emerald-500/15 data-[active]:text-emerald-300 data-[active]:font-bold data-[active]:border data-[active]:border-emerald-500/30 data-[active]:shadow-[0_0_12px_rgba(16,185,129,0.15)]",
         className
       )}
       {...props}
@@ -50,7 +50,7 @@ function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-content"
-      className={cn("flex-1 text-sm outline-none mt-2", className)}
+      className={cn("w-full flex-1 min-h-0 outline-none flex flex-col", className)}
       {...props}
     />
   )

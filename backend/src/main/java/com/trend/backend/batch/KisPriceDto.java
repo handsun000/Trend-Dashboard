@@ -26,7 +26,22 @@ public class KisPriceDto {
         @JsonProperty("prdy_ctrt")
         private String changeRate; // 전일 대비율
 
+        @JsonProperty("stck_sdpr")
+        private String prevClose; // 전일 종가
+
+        @JsonProperty("stck_oprc")
+        private String openPrice; // 시가
+
+        @JsonProperty("stck_hgpr")
+        private String highPrice; // 당일 최고가
+
+        @JsonProperty("stck_lwpr")
+        private String lowPrice; // 당일 최저가
+
         @JsonProperty("acml_vol")
         private String volume; // 누적 거래량
+
+        @JsonProperty("acml_tr_pbmn")
+        private String tradeValue; // 누적 거래대금
     }
 }

@@ -29,4 +29,21 @@ public class UpbitApiClient {
         }
         return List.of();
     }
+
+    public List<UpbitMarketDto> fetchAllMarkets() {
+        try {
+            UpbitMarketDto[] response = restClient.get()
+                    .uri("https://api.upbit.com/v1/market/all?isDetails=false")
+                    .retrieve()
+                    .body(UpbitMarketDto[].class);
+
+            if (response != null) {
+                log.info("Successfully fetched {} markets from Upbit Open API", response.length);
+                return Arrays.asList(response);
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch Upbit Market list", e);
+        }
+        return List.of();
+    }
 }
