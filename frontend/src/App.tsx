@@ -1,13 +1,18 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
+import PublicDataCenter from './pages/PublicDataCenter';
+import AlertsView from './pages/AlertsView';
+import SettingsView from './pages/SettingsView';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
 function App() {
+  const [activeView, setActiveView] = useState('dashboard');
+
   useEffect(() => {
     try {
       const client = new Client({
@@ -66,11 +71,14 @@ function App() {
       </div>
 
       {/* Main Layout */}
-      <Sidebar />
+      <Sidebar activeView={activeView} onViewChange={setActiveView} />
       <div className="relative z-10 flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-white/[0.01]">
         <Header />
         <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          <Dashboard />
+          {activeView === 'dashboard' && <Dashboard />}
+          {activeView === 'public-data' && <PublicDataCenter />}
+          {activeView === 'alerts' && <AlertsView />}
+          {activeView === 'settings' && <SettingsView />}
         </main>
       </div>
       <ToastContainer />
@@ -79,3 +87,4 @@ function App() {
 }
 
 export default App;
+

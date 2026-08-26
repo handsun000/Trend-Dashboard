@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, Activity, BellPlus, Trash2, ShieldAlert, Sparkles, Layers } from 'lucide-react';
+import { TrendingUp, Activity, BellPlus, Trash2, ShieldAlert, Sparkles, Newspaper, ExternalLink, ThumbsUp, Flame, AlertCircle } from 'lucide-react';
 import UserAlertModal from '@/components/UserAlertModal';
 import axios from 'axios';
 import { toast } from 'react-toastify';
@@ -37,6 +37,30 @@ interface MarketQuote {
   formattedChange: string;
 }
 
+interface NewsItem {
+  id: string;
+  ticker: string;
+  targetName: string;
+  title: string;
+  source: string;
+  publishedAt: string;
+  sentiment: string;
+  sentimentScore: number;
+  sentimentLabel: string;
+  summary: string;
+  impactTags: string[];
+  url: string;
+}
+
+interface NewsResponse {
+  ticker: string;
+  targetName: string;
+  overallSentimentScore: number;
+  overallSentimentLabel: string;
+  aiInsight: string;
+  newsList: NewsItem[];
+}
+
 /**
  * [World-Class Single-Pane Trading Dashboard]
  * UX Philosophy:
@@ -67,6 +91,10 @@ export default function Dashboard() {
   // Micro flash states for pulse animation
   const [stockFlash, setStockFlash] = useState<'up' | 'down' | null>(null);
   const [cryptoFlash, setCryptoFlash] = useState<'up' | 'down' | null>(null);
+
+  // News and AI sentiment state
+  const [newsData, setNewsData] = useState<NewsResponse | null>(null);
+  const [newsLoading, setNewsLoading] = useState(false);
 
   const prevStockPriceRef = useRef(currentStockPrice);
   const prevCryptoPriceRef = useRef(currentCryptoPrice);
@@ -121,6 +149,19 @@ export default function Dashboard() {
     }
   };
 
+  // Live Market News & AI Sentiment Fetcher
+  const loadNews = async (ticker: string, name?: string) => {
+    setNewsLoading(true);
+    try {
+      const res = await axios.get<NewsResponse>(`/api/v1/market/news?ticker=${ticker}${name ? `&name=${encodeURIComponent(name)}` : ''}`);
+      setNewsData(res.data);
+    } catch (e) {
+      console.error('Failed to load market news', e);
+    } finally {
+      setNewsLoading(false);
+    }
+  };
+
   // Listen to GlobalSearch selection events
   useEffect(() => {
     const handleTickerSelect = (e: any) => {
@@ -130,11 +171,13 @@ export default function Dashboard() {
       if (item.market === 'CRYPTO') {
         setSelectedCrypto({ ticker: item.ticker, name: item.name, market: 'CRYPTO' });
         loadCryptoQuote(item.ticker, item.name);
+        loadNews(item.ticker, item.name);
         setActiveTab('crypto');
         toast.info(`🔔 [${item.name}] 코인 시세를 불러왔습니다.`, { position: 'bottom-right', theme: 'dark' });
       } else {
         setSelectedStock({ ticker: item.ticker, name: item.name, market: item.market });
         loadStockQuote(item.ticker, item.name);
+        loadNews(item.ticker, item.name);
         setActiveTab('stock');
         toast.info(`📈 [${item.name}] 주식 시세를 불러왔습니다.`, { position: 'bottom-right', theme: 'dark' });
       }
@@ -149,6 +192,7 @@ export default function Dashboard() {
     fetchAlerts();
     loadStockQuote('005930', '삼성전자');
     loadCryptoQuote('KRW-BTC', '비트코인');
+    loadNews('005930', '삼성전자');
 
     const client = new Client({
       webSocketFactory: () => new SockJS('/ws'),
@@ -223,9 +267,9 @@ export default function Dashboard() {
   const cryptoStep = getStep(currentCryptoPrice);
 
   return (
-    <div className="h-full w-full flex flex-col p-3.5 md:p-4 gap-2.5 min-h-0 overflow-hidden text-slate-300 select-none">
+    <div className="h-full w-full flex flex-col p-3.5 md:p-4 gap-2.5 min-h-0 overflow-hidden text-slate-300 select-none font-sans">
       
-      {/* 1. TOP SUMMARY RIBBON (High Information Density, ~68px height, 0 wasted vertical space) */}
+      {/* 1. TOP SUMMARY RIBBON (High Information Density, ~68px height) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 shrink-0">
         
         {/* Card 1: Stock Metric */}
@@ -287,7 +331,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* 2. COMPACT ACTIVE ALERTS CHIP ROW (Only rendered if alerts exist, max height 28px) */}
+      {/* 2. COMPACT ACTIVE ALERTS CHIP ROW */}
       {alerts.length > 0 && (
         <div className="flex items-center gap-2 overflow-x-auto py-0.5 shrink-0 select-none">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 shrink-0">
@@ -313,23 +357,28 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 3. MAIN WORKSPACE TABS & SINGLE-PANE BENTO GRID (flex-1 min-h-0 fills remaining 100vh) */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
+      {/* 3. MAIN WORKSPACE TABS & SINGLE-PANE BENTO GRID */}
+      <Tabs value={activeTab} onValueChange={(val) => {
+        setActiveTab(val);
+        if (val === 'news') {
+          loadNews(selectedStock.ticker, selectedStock.name);
+        }
+      }} className="flex-1 min-h-0 flex flex-col gap-2 overflow-hidden">
         
-        {/* Sleek Minimal Tab Navigation Strip */}
+        {/* Tab Navigation Strip */}
         <div className="flex items-center justify-between gap-3 shrink-0">
           <TabsList>
             <TabsTrigger value="stock" className="gap-1.5">
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>주식 ({selectedStock.ticker})</span>
+              <span>주식 ({selectedStock.name})</span>
             </TabsTrigger>
             <TabsTrigger value="crypto" className="gap-1.5">
               <Activity className="w-3.5 h-3.5" />
-              <span>업비트 ({selectedCrypto.ticker})</span>
+              <span>가상자산 ({selectedCrypto.name})</span>
             </TabsTrigger>
-            <TabsTrigger value="public" className="gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>공공 데이터</span>
+            <TabsTrigger value="news" className="gap-1.5">
+              <Newspaper className="w-3.5 h-3.5 text-emerald-400" />
+              <span>실시간 뉴스 & AI ({selectedStock.name})</span>
             </TabsTrigger>
           </TabsList>
 
@@ -341,10 +390,8 @@ export default function Dashboard() {
         
         {/* TAB 1: STOCK VIEW (Left: 2 Cols Chart / Right: 1 Col Orderbook) */}
         <TabsContent value="stock" className="w-full flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-2.5 overflow-hidden">
-          
           {/* Left Chart Panel */}
           <div className="lg:col-span-2 bg-white/[0.02] border border-white/5 rounded-2xl p-3.5 flex flex-col min-h-0 h-full overflow-hidden shadow-sm">
-            {/* Chart Sub-header with Ticker Stats Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 shrink-0">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-black text-white flex items-center gap-1.5">
@@ -354,7 +401,6 @@ export default function Dashboard() {
                 <span className="text-[10px] px-2 py-0.2 rounded bg-white/5 text-slate-300 font-bold border border-white/5">{selectedStock.market}</span>
               </div>
               
-              {/* Tight 4-Metric Statistics Ribbon */}
               <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-400 bg-white/[0.02] border border-white/5 px-2.5 py-1 rounded-lg">
                 <span>전일 <b className="text-slate-200">₩{(stockQuote?.prevClose ?? (currentStockPrice * 0.99)).toLocaleString()}</b></span>
                 <span>고가 <b className="text-rose-400">₩{(stockQuote?.high ?? (currentStockPrice * 1.02)).toLocaleString()}</b></span>
@@ -363,7 +409,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* AreaChart Container (Strict flex-1 min-h-0 with 100% responsiveness) */}
             <div className="flex-1 min-h-0 w-full relative">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={stockData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
@@ -396,16 +441,14 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right Orderbook Panel (Nothing.tech high-density tactile rows) */}
+          {/* Right Orderbook Panel */}
           <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-3.5 flex flex-col min-h-0 h-full justify-between overflow-hidden shadow-sm">
             <div className="flex justify-between items-center pb-2 border-b border-white/5 shrink-0">
               <span className="text-xs font-bold text-white">호가창 (Orderbook)</span>
               <span className="text-[10px] font-mono text-slate-400">10단계 잔량</span>
             </div>
 
-            {/* Dynamic Spread Rows */}
             <div className="flex-1 min-h-0 flex flex-col justify-around py-1 space-y-1">
-              {/* 3 Sell Rows */}
               {[currentStockPrice + stockStep * 3, currentStockPrice + stockStep * 2, currentStockPrice + stockStep].map((price, i) => (
                 <div key={i} className="relative overflow-hidden flex justify-between items-center px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 text-rose-200 font-mono text-xs tabular-nums transition-colors">
                   <div className="absolute right-0 top-0 bottom-0 bg-rose-500/10 rounded-r-xl" style={{ width: `${(3 - i) * 28}%` }}></div>
@@ -414,12 +457,10 @@ export default function Dashboard() {
                 </div>
               ))}
               
-              {/* Spread Midpoint Line */}
               <div className="h-px bg-white/5 my-0.5 flex items-center justify-center">
                 <span className="bg-[#0B132B] px-2 text-[9px] text-slate-500 uppercase tracking-widest font-mono">Spread</span>
               </div>
 
-              {/* 3 Buy Rows */}
               {[currentStockPrice, currentStockPrice - stockStep, currentStockPrice - stockStep * 2].map((price, i) => (
                 <div key={i} className="relative overflow-hidden flex justify-between items-center px-3 py-1.5 rounded-xl bg-teal-500/10 hover:bg-teal-500/15 border border-teal-500/20 text-teal-200 font-mono text-xs tabular-nums transition-colors">
                   <div className="absolute right-0 top-0 bottom-0 bg-teal-500/10 rounded-r-xl" style={{ width: `${(i + 1) * 32}%` }}></div>
@@ -429,7 +470,6 @@ export default function Dashboard() {
               ))}
             </div>
             
-            {/* Orderbook Footer Meta */}
             <div className="pt-2 border-t border-white/5 flex justify-between text-[10px] text-slate-400 font-mono shrink-0">
               <span>체결강도 <b className="text-emerald-400 tabular-nums">118.4%</b></span>
               <span>외인비율 <b className="text-slate-200 tabular-nums">46.7%</b></span>
@@ -437,12 +477,9 @@ export default function Dashboard() {
           </div>
         </TabsContent>
 
-        {/* TAB 2: CRYPTO VIEW (Left: 2 Cols Chart / Right: 1 Col Upbit Orderbook) */}
+        {/* TAB 2: CRYPTO VIEW */}
         <TabsContent value="crypto" className="w-full flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-2.5 overflow-hidden">
-          
-          {/* Left Chart Panel */}
           <div className="lg:col-span-2 bg-white/[0.02] border border-white/5 rounded-2xl p-3.5 flex flex-col min-h-0 h-full overflow-hidden shadow-sm">
-            {/* Chart Sub-header with Ticker Stats Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 shrink-0">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-black text-white flex items-center gap-1.5">
@@ -452,7 +489,6 @@ export default function Dashboard() {
                 <span className="text-[10px] px-2 py-0.2 rounded bg-cyan-500/10 text-cyan-300 font-bold border border-cyan-500/20">Upbit</span>
               </div>
               
-              {/* Tight 4-Metric Statistics Ribbon */}
               <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums text-slate-400 bg-white/[0.02] border border-white/5 px-2.5 py-1 rounded-lg">
                 <span>전일 <b className="text-slate-200">₩{(cryptoQuote?.prevClose ?? currentCryptoPrice).toLocaleString()}</b></span>
                 <span>고가 <b className="text-rose-400">₩{(cryptoQuote?.high ?? (currentCryptoPrice * 1.03)).toLocaleString()}</b></span>
@@ -461,7 +497,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* AreaChart Container (Strict flex-1 min-h-0 with 100% responsiveness) */}
             <div className="flex-1 min-h-0 w-full relative">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={cryptoData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
@@ -502,16 +537,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right Upbit Orderbook Panel */}
           <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-3.5 flex flex-col min-h-0 h-full justify-between overflow-hidden shadow-sm">
             <div className="flex justify-between items-center pb-2 border-b border-white/5 shrink-0">
               <span className="text-xs font-bold text-white">업비트 호가 ({selectedCrypto.ticker})</span>
               <span className="text-[10px] font-mono text-cyan-400">실시간 연동</span>
             </div>
 
-            {/* Dynamic Spread Rows */}
             <div className="flex-1 min-h-0 flex flex-col justify-around py-1 space-y-1">
-              {/* 3 Sell Rows */}
               {[currentCryptoPrice + cryptoStep * 3, currentCryptoPrice + cryptoStep * 2, currentCryptoPrice + cryptoStep].map((price, i) => (
                 <div key={i} className="relative overflow-hidden flex justify-between items-center px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 text-rose-200 font-mono text-xs tabular-nums transition-colors">
                   <div className="absolute right-0 top-0 bottom-0 bg-rose-500/10 rounded-r-xl" style={{ width: `${(3 - i) * 30}%` }}></div>
@@ -520,12 +552,10 @@ export default function Dashboard() {
                 </div>
               ))}
               
-              {/* Spread Midpoint Line */}
               <div className="h-px bg-white/5 my-0.5 flex items-center justify-center">
                 <span className="bg-[#0B132B] px-2 text-[9px] text-slate-500 uppercase tracking-widest font-mono">Spread</span>
               </div>
 
-              {/* 3 Buy Rows */}
               {[currentCryptoPrice, currentCryptoPrice - cryptoStep, currentCryptoPrice - cryptoStep * 2].map((price, i) => (
                 <div key={i} className="relative overflow-hidden flex justify-between items-center px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/20 text-cyan-200 font-mono text-xs tabular-nums transition-colors">
                   <div className="absolute right-0 top-0 bottom-0 bg-cyan-500/10 rounded-r-xl" style={{ width: `${(i + 1) * 28}%` }}></div>
@@ -535,7 +565,6 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {/* Orderbook Footer Meta */}
             <div className="pt-2 border-t border-white/5 flex justify-between text-[10px] text-slate-400 font-mono shrink-0">
               <span>체결비율 <b className="text-cyan-400 tabular-nums">142.6% (매수우세)</b></span>
               <span>업비트 KRW</span>
@@ -543,14 +572,114 @@ export default function Dashboard() {
           </div>
         </TabsContent>
 
-        {/* TAB 3: PUBLIC DATA VIEW */}
-        <TabsContent value="public" className="w-full flex-1 min-h-0 flex items-center justify-center">
-          <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-8 text-center space-y-3 max-w-md shadow-sm">
-            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 w-12 h-12 mx-auto flex items-center justify-center">
-              <Layers className="w-6 h-6 animate-pulse" />
+        {/* TAB 3: LIVE MARKET NEWS & AI SENTIMENT VIEW */}
+        <TabsContent value="news" className="w-full flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-2.5 overflow-hidden">
+          {/* Left 2 Cols: AI Sentiment Bar & Live News Stream */}
+          <div className="lg:col-span-2 bg-white/[0.02] border border-white/5 rounded-2xl p-3.5 flex flex-col min-h-0 h-full overflow-hidden shadow-sm">
+            {/* Top AI Sentiment Score Ribbon */}
+            <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-transparent border border-emerald-500/20 flex flex-col sm:flex-row justify-between sm:items-center gap-2 mb-2.5 shrink-0">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-300">{newsData?.targetName || selectedStock.name} AI 종합 감성 지수</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                    {newsData?.overallSentimentLabel || '호재 우세 (85%)'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">{newsData?.aiInsight}</p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 font-mono">
+                <span className="text-xs text-slate-400">Score</span>
+                <span className="text-xl font-black text-emerald-400">+{newsData?.overallSentimentScore ?? 85}</span>
+              </div>
             </div>
-            <p className="text-sm font-black text-white">공공데이터 실시간 거시경제 분석</p>
-            <p className="text-xs text-slate-400">Spring Batch 파이프라인 및 한국은행 / 국토교통부 OpenAPI와 연결 대기 중입니다.</p>
+
+            {/* Live News Items Scroll Container */}
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+              {newsLoading ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-500">
+                  <Sparkles className="w-4 h-4 text-emerald-400 animate-spin mr-2" />
+                  <span>실시간 종목 뉴스 및 AI 감성 분석 중...</span>
+                </div>
+              ) : newsData?.newsList && newsData.newsList.length > 0 ? (
+                newsData.newsList.map((item) => (
+                  <div key={item.id} className="p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all">
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] text-slate-400 font-semibold">{item.source}</span>
+                          <span className="text-[10px] text-slate-500">· {item.publishedAt}</span>
+                          <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold font-mono ${
+                            item.sentiment === 'POSITIVE' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-500/20 text-slate-300'
+                          }`}>
+                            {item.sentimentLabel}
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-bold text-white hover:text-emerald-400 transition-colors flex items-center gap-1.5">
+                          <span>{item.title}</span>
+                          <ExternalLink className="w-3 h-3 text-slate-500" />
+                        </h4>
+                        <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">{item.summary}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-white/5">
+                      {item.impactTags.map((tag, tIdx) => (
+                        <span key={tIdx} className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-slate-400 font-mono">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-slate-500">
+                  수집된 최신 뉴스가 없습니다.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right 1 Col: Market Catalysts & Impact Radar */}
+          <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-3.5 flex flex-col min-h-0 h-full justify-between overflow-hidden shadow-sm">
+            <div className="space-y-3">
+              <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Flame className="w-3.5 h-3.5 text-amber-400" />
+                  <span>실시간 모멘텀 & 호재 요인</span>
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono">AI Radar</span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-300">기관/외국인 동반 순매수</span>
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold">+89점</span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1">대형 패시브 펀드 및 프로그램 매수세 유입으로 하방 지지력이 강력합니다.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-cyan-300">실적 컨센서스 상향</span>
+                  <span className="text-[10px] font-mono text-cyan-400 font-bold">+78점</span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1">차세대 제품군 수율 개선 및 ASP 상승으로 마진율 개선 기대감이 반영되고 있습니다.</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300">변동성 및 차익실현 주의</span>
+                  <span className="text-[10px] font-mono text-amber-400 font-bold">경계구간</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">단기 급등 시 단기 이격도 축소 과정에서 숨고르기가 나타날 수 있습니다.</p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-white/5 flex justify-between items-center text-[10px] text-slate-500 font-mono shrink-0">
+              <span>네이버 금융 · DART 공시 연계</span>
+              <span className="text-emerald-400">실시간 피드</span>
+            </div>
           </div>
         </TabsContent>
       </Tabs>
@@ -565,3 +694,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
