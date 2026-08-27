@@ -14,10 +14,12 @@ export default defineConfig({
     },
   },
   server: {
+    port: 15173,
+    host: true,
     proxy: {
-      '/api': 'http://localhost:8080',
+      '/api': 'http://localhost:18080',
       '/ws': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:18080',
         ws: true
       }
     }

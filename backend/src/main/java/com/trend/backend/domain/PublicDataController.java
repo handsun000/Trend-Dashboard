@@ -31,7 +31,17 @@ public class PublicDataController {
     }
 
     @GetMapping("/real-estate/transactions")
-    public ResponseEntity<List<PublicDataDto.RealEstateTransaction>> getRealEstateTransactions() {
-        return ResponseEntity.ok(publicDataService.getRecentTransactions());
+    public ResponseEntity<List<PublicDataDto.RealEstateTransaction>> getRealEstateTransactions(
+            @RequestParam(value = "district", required = false, defaultValue = "ALL") String district,
+            @RequestParam(value = "tradeType", required = false, defaultValue = "ALL") String tradeType,
+            @RequestParam(value = "propertyType", required = false, defaultValue = "ALL") String propertyType
+    ) {
+        return ResponseEntity.ok(publicDataService.getRecentTransactions(district, tradeType, propertyType));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<Map<String, String>> refreshPublicData() {
+        publicDataService.refreshAll();
+        return ResponseEntity.ok(Map.of("status", "SUCCESS", "message", "Public data cache refreshed from live OpenAPI."));
     }
 }

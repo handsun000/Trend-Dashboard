@@ -1,3 +1,6 @@
+server:
+  port: 18080
+
 spring:
   config:
     import: optional:classpath:application-secret.yml
@@ -43,3 +46,7 @@ kis:
     app-key: ${KIS_APP_KEY:dummy_app_key}
     app-secret: ${KIS_APP_SECRET:dummy_app_secret}
     domain: ${KIS_DOMAIN:https://openapivts.koreainvestment.com:29443}
+
+public-data:
+  service-key: ${DATA_GO_KR_SERVICE_KEY:dummy_service_key}
+
