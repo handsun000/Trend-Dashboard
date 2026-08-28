@@ -30,13 +30,38 @@ public class PublicDataController {
         }
     }
 
+    @GetMapping("/regions/hierarchy")
+    public ResponseEntity<List<RegionalCodeRegistry.SidoHierarchy>> getRegionHierarchy() {
+        return ResponseEntity.ok(publicDataService.getRegionHierarchy());
+    }
+
+    @GetMapping("/regions/search")
+    public ResponseEntity<List<RegionalCodeRegistry.RegionInfo>> searchRegions(@RequestParam(value = "q", required = false, defaultValue = "") String query) {
+        return ResponseEntity.ok(publicDataService.searchRegions(query));
+    }
+
+    @GetMapping("/real-estate/paged")
+    public ResponseEntity<PublicDataDto.PagedRealEstateResponse> getPagedRealEstateTransactions(
+            @RequestParam(value = "district", required = false, defaultValue = "ALL") String district,
+            @RequestParam(value = "lawdCd", required = false) String lawdCd,
+            @RequestParam(value = "tradeType", required = false, defaultValue = "ALL") String tradeType,
+            @RequestParam(value = "propertyType", required = false, defaultValue = "ALL") String propertyType,
+            @RequestParam(value = "page", required = false, defaultValue = "1") int page,
+            @RequestParam(value = "size", required = false, defaultValue = "20") int size
+    ) {
+        String targetDistrict = (lawdCd != null && !lawdCd.isBlank()) ? lawdCd : district;
+        return ResponseEntity.ok(publicDataService.getPagedTransactions(targetDistrict, tradeType, propertyType, page, size));
+    }
+
     @GetMapping("/real-estate/transactions")
     public ResponseEntity<List<PublicDataDto.RealEstateTransaction>> getRealEstateTransactions(
             @RequestParam(value = "district", required = false, defaultValue = "ALL") String district,
+            @RequestParam(value = "lawdCd", required = false) String lawdCd,
             @RequestParam(value = "tradeType", required = false, defaultValue = "ALL") String tradeType,
             @RequestParam(value = "propertyType", required = false, defaultValue = "ALL") String propertyType
     ) {
-        return ResponseEntity.ok(publicDataService.getRecentTransactions(district, tradeType, propertyType));
+        String targetDistrict = (lawdCd != null && !lawdCd.isBlank()) ? lawdCd : district;
+        return ResponseEntity.ok(publicDataService.getRecentTransactions(targetDistrict, tradeType, propertyType));
     }
 
     @PostMapping("/refresh")

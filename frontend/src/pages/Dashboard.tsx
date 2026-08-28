@@ -605,7 +605,7 @@ export default function Dashboard() {
                 newsData.newsList.map((item) => (
                   <div key={item.id} className="p-3 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all">
                     <div className="flex justify-between items-start gap-2">
-                      <div>
+                      <div className="w-full">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-[10px] text-slate-400 font-semibold">{item.source}</span>
                           <span className="text-[10px] text-slate-500">· {item.publishedAt}</span>
@@ -615,10 +615,15 @@ export default function Dashboard() {
                             {item.sentimentLabel}
                           </span>
                         </div>
-                        <h4 className="text-xs font-bold text-white hover:text-emerald-400 transition-colors flex items-center gap-1.5">
-                          <span>{item.title}</span>
-                          <ExternalLink className="w-3 h-3 text-slate-500" />
-                        </h4>
+                        <a 
+                          href={item.url || '#'} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs font-bold text-white hover:text-emerald-400 transition-colors flex items-center gap-1.5 group/link cursor-pointer"
+                        >
+                          <span className="line-clamp-1">{item.title}</span>
+                          <ExternalLink className="w-3 h-3 text-slate-500 group-hover/link:text-emerald-400 shrink-0" />
+                        </a>
                         <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">{item.summary}</p>
                       </div>
                     </div>

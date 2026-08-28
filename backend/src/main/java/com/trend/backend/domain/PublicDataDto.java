@@ -64,6 +64,58 @@ public class PublicDataDto {
         private String tradeDate;
         private String tradeType;         // 매매(중개거래) / 전세(신규) / 월세
         private String status;            // 초고가/신고가, 우상향, 전세, 월세 등
+        private Boolean isLive;           // 100% 국토교통부 실시간 OpenAPI 수신 여부
+
+        // 1. 동적 매물 스펙 필드
+        private String direction;              // "남향", "남동향", "동향" 등
+        private Double parkingPerHousehold;    // 세대당 주차대수 (예: 1.85)
+        private Integer elevatorCount;         // 승강기 수 (예: 2)
+        private String subwayInfo;             // "신분당선 판교역 도보 4분"
+        private Integer walkTimeToSubway;      // 도보 시간(분)
+        private String buildingStructure;      // "계단식", "타워형", "복도식"
+
+        // 2. 권리분석 및 보증금 안전도 (신호등 시스템)
+        private String safetyRating;           // "SAFE", "CAUTION", "DANGER"
+        private Double seniorMortgageWon;      // 선순위 근저당 (억원)
+        private Double jeonseRatio;            // 전세가율 (%)
+        private Boolean isHugEligible;         // HUG 전세보증보험 100% 가입 가능 여부
+        private String safetyAnalysisReport;   // 실시간 권리분석 요약 리포트
+
+        // 3. 지역 시세 비교 및 백분위수 인포그래픽
+        private Double districtAvgPrice;       // 해당 권역/평형 평균 시세 (억원)
+        private Double districtMinPrice;       // 권역 최저 거래가 (억원)
+        private Double districtMaxPrice;       // 권역 최고 거래가 (억원)
+        private Integer pricePercentile;       // 권역 내 가격 백분위 (0 ~ 100%)
+
+        // 4. 관리비
+        private Integer maintenanceFee;        // 월 평균 관리비 (만원)
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TabCounts {
+        private int totalCount;
+        private int aptCount;
+        private int offiCount;
+        private int villaCount;
+        private int tradeCount;
+        private int jeonseCount;
+        private int rentCount;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PagedRealEstateResponse {
+        private List<RealEstateTransaction> content;
+        private int page;
+        private int size;
+        private int totalElements;
+        private int totalPages;
+        private TabCounts tabCounts;
     }
 
     @Data

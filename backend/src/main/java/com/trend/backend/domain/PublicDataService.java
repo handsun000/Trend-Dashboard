@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -17,12 +18,21 @@ public class PublicDataService {
 
     private final KmaApiClient kmaApiClient;
     private final MolitApiClient molitApiClient;
+    private final RegionalCodeRegistry regionalCodeRegistry;
 
     // In-memory cache keyed by "district_tradeType_propertyType"
     private final Map<String, List<PublicDataDto.RealEstateTransaction>> txCache = new ConcurrentHashMap<>();
     private List<KmaApiClient.MonthlyWeather> cachedWeather = null;
     private long weatherLastFetched = 0;
     private static final long CACHE_TTL_MS = 10 * 60 * 1000L; // 10 minutes
+
+    public List<RegionalCodeRegistry.SidoHierarchy> getRegionHierarchy() {
+        return regionalCodeRegistry.getHierarchy();
+    }
+
+    public List<RegionalCodeRegistry.RegionInfo> searchRegions(String query) {
+        return regionalCodeRegistry.searchRegions(query);
+    }
 
     @PostConstruct
     public void init() {
@@ -111,8 +121,67 @@ public class PublicDataService {
                 .build();
     }
 
+    public PublicDataDto.PagedRealEstateResponse getPagedTransactions(
+            String districtFilter, String tradeTypeFilter, String propertyTypeFilter, int page, int size
+    ) {
+        String district = (districtFilter == null || districtFilter.isBlank()) ? "ALL" : districtFilter.trim();
+        String tradeType = (tradeTypeFilter == null || tradeTypeFilter.isBlank()) ? "ALL" : tradeTypeFilter.toUpperCase();
+        String propType = (propertyTypeFilter == null || propertyTypeFilter.isBlank()) ? "ALL" : propertyTypeFilter.toUpperCase();
+
+        // 1. 해당 지역의 전체 통합 데이터셋 조회 (캐시 활용)
+        List<PublicDataDto.RealEstateTransaction> allDistrictList = getRecentTransactions(district, "ALL", "ALL");
+
+        // 2. 상단 탭 뱃지용 전체 카운트 집계
+        int totalCnt = allDistrictList.size();
+        int aptCnt = (int) allDistrictList.stream().filter(t -> "APT".equalsIgnoreCase(t.getPropertyType())).count();
+        int offiCnt = (int) allDistrictList.stream().filter(t -> "OFFI".equalsIgnoreCase(t.getPropertyType())).count();
+        int villaCnt = (int) allDistrictList.stream().filter(t -> "VILLA".equalsIgnoreCase(t.getPropertyType())).count();
+        int tradeCnt = (int) allDistrictList.stream().filter(t -> "TRADE".equalsIgnoreCase(t.getDealCategory())).count();
+        int jeonseCnt = (int) allDistrictList.stream().filter(t -> "JEONSE".equalsIgnoreCase(t.getDealCategory())).count();
+        int rentCnt = (int) allDistrictList.stream().filter(t -> "RENT".equalsIgnoreCase(t.getDealCategory())).count();
+
+        PublicDataDto.TabCounts tabCounts = PublicDataDto.TabCounts.builder()
+                .totalCount(totalCnt)
+                .aptCount(aptCnt)
+                .offiCount(offiCnt)
+                .villaCount(villaCnt)
+                .tradeCount(tradeCnt)
+                .jeonseCount(jeonseCnt)
+                .rentCount(rentCnt)
+                .build();
+
+        // 3. 조건 필터링
+        List<PublicDataDto.RealEstateTransaction> filtered = allDistrictList.stream()
+                .filter(t -> "ALL".equals(propType) || propType.equalsIgnoreCase(t.getPropertyType()))
+                .filter(t -> "ALL".equals(tradeType) || tradeType.equalsIgnoreCase(t.getDealCategory()))
+                .collect(Collectors.toList());
+
+        // 4. 페이징 계산
+        int totalElements = filtered.size();
+        int pageSize = Math.max(1, size);
+        int totalPages = (int) Math.ceil((double) totalElements / pageSize);
+        if (totalPages == 0) totalPages = 1;
+
+        int currentPage = Math.max(1, Math.min(page, totalPages));
+        int fromIndex = (currentPage - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, totalElements);
+
+        List<PublicDataDto.RealEstateTransaction> pagedContent = (fromIndex < totalElements)
+                ? filtered.subList(fromIndex, toIndex)
+                : Collections.emptyList();
+
+        return PublicDataDto.PagedRealEstateResponse.builder()
+                .content(pagedContent)
+                .page(currentPage)
+                .size(pageSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .tabCounts(tabCounts)
+                .build();
+    }
+
     public List<PublicDataDto.RealEstateTransaction> getRecentTransactions(String districtFilter, String tradeTypeFilter, String propertyTypeFilter) {
-        String district = (districtFilter == null || districtFilter.isBlank()) ? "ALL" : districtFilter.toUpperCase();
+        String district = (districtFilter == null || districtFilter.isBlank()) ? "ALL" : districtFilter.trim();
         String tradeType = (tradeTypeFilter == null || tradeTypeFilter.isBlank()) ? "ALL" : tradeTypeFilter.toUpperCase();
         String propType = (propertyTypeFilter == null || propertyTypeFilter.isBlank()) ? "ALL" : propertyTypeFilter.toUpperCase();
         
@@ -123,8 +192,49 @@ public class PublicDataService {
         }
 
         List<PublicDataDto.RealEstateTransaction> fetched = molitApiClient.fetchTransactions(district, tradeType, propType);
+        enrichRegionalPriceStatistics(fetched);
         txCache.put(cacheKey, fetched);
         return fetched;
+    }
+
+    private void enrichRegionalPriceStatistics(List<PublicDataDto.RealEstateTransaction> list) {
+        if (list == null || list.isEmpty()) return;
+
+        double sum = 0.0;
+        double min = Double.MAX_VALUE;
+        double max = 0.0;
+        int count = 0;
+
+        for (PublicDataDto.RealEstateTransaction t : list) {
+            Double p = t.getTradePrice();
+            if (p != null && p > 0) {
+                sum += p;
+                if (p < min) min = p;
+                if (p > max) max = p;
+                count++;
+            }
+        }
+
+        double avg = count > 0 ? (Math.round((sum / count) * 10.0) / 10.0) : 15.0;
+        if (min == Double.MAX_VALUE) min = 2.0;
+        if (max <= 0) max = 30.0;
+
+        double priceRange = (max - min) > 0 ? (max - min) : 1.0;
+
+        for (PublicDataDto.RealEstateTransaction t : list) {
+            t.setDistrictAvgPrice(avg);
+            t.setDistrictMinPrice(min);
+            t.setDistrictMaxPrice(max);
+
+            Double p = t.getTradePrice();
+            if (p != null) {
+                int percentile = (int) Math.round(((p - min) / priceRange) * 100.0);
+                percentile = Math.max(8, Math.min(98, percentile));
+                t.setPricePercentile(percentile);
+            } else {
+                t.setPricePercentile(50);
+            }
+        }
     }
 
     public List<Map<String, Object>> getWeatherConsumptionSeries() {
