@@ -143,7 +143,7 @@ const DONG_COORDINATES: Record<string, { lat: number; lng: number }> = {
   '이매동': { lat: 37.3960, lng: 127.1270 },
 };
 
-const KAKAO_APP_KEY = '96d81b3a9abbc9f91e39b73bfc6c25ec';
+const KAKAO_APP_KEY = import.meta.env.VITE_KAKAO_MAP_APP_KEY || '';
 
 interface ComplexGroup {
   complexName: string;

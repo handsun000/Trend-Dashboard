@@ -1,6 +1,12 @@
 # Security & Secrets
 application-secret.yml
 **/application-secret.yml
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 # Gradle & Java
 .gradle/
