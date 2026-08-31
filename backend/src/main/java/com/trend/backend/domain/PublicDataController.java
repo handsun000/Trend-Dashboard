@@ -19,12 +19,30 @@ public class PublicDataController {
         return ResponseEntity.ok(publicDataService.getSummary());
     }
 
+    @GetMapping("/weather/current")
+    public ResponseEntity<PublicDataDto.CurrentWeather> getCurrentWeather(
+            @RequestParam(value = "lawdCd", required = false, defaultValue = "11680") String lawdCd,
+            @RequestParam(value = "regionName", required = false, defaultValue = "서울 강남구") String regionName
+    ) {
+        return ResponseEntity.ok(publicDataService.getCurrentWeather(lawdCd, regionName));
+    }
+
+    @GetMapping("/weather/series")
+    public ResponseEntity<List<Map<String, Object>>> getWeatherSeries(
+            @RequestParam(value = "lawdCd", required = false, defaultValue = "11680") String lawdCd
+    ) {
+        return ResponseEntity.ok(publicDataService.getWeatherConsumptionSeries(lawdCd));
+    }
+
     @GetMapping("/series")
-    public ResponseEntity<List<Map<String, Object>>> getSeries(@RequestParam(defaultValue = "REAL_ESTATE") String category) {
+    public ResponseEntity<List<Map<String, Object>>> getSeries(
+            @RequestParam(defaultValue = "REAL_ESTATE") String category,
+            @RequestParam(value = "lawdCd", required = false, defaultValue = "11680") String lawdCd
+    ) {
         if ("MACRO".equalsIgnoreCase(category)) {
             return ResponseEntity.ok(publicDataService.getMacroSeries());
         } else if ("WEATHER_CONSUMPTION".equalsIgnoreCase(category) || "WEATHER".equalsIgnoreCase(category)) {
-            return ResponseEntity.ok(publicDataService.getWeatherConsumptionSeries());
+            return ResponseEntity.ok(publicDataService.getWeatherConsumptionSeries(lawdCd));
         } else {
             return ResponseEntity.ok(publicDataService.getRealEstateSeries());
         }

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { 
   Layers, 
   ZoomIn, 
@@ -11,7 +11,9 @@ import {
   Building2,
   ChevronRight,
   Eye,
-  Navigation
+  Navigation,
+  X,
+  ChevronUp
 } from 'lucide-react';
 
 export interface MapTransaction {
@@ -59,107 +61,63 @@ interface KakaoRealEstateMapProps {
   onSearchInBounds?: (payload: SearchInBoundsPayload) => void;
 }
 
-// 전국 주요 핵심 지역 기본 좌표 매핑
+// 전국 주요 핵심 지역 기본 중심 좌표
 const REGION_COORDINATES: Record<string, { lat: number; lng: number }> = {
-  'ALL': { lat: 37.5665, lng: 126.9780 }, // 서울시청 중심
-  '11620': { lat: 37.4784, lng: 126.9516 }, // 관악구 (봉천/신림/서울대입구)
-  '11680': { lat: 37.4979, lng: 127.0276 }, // 강남구
-  '11650': { lat: 37.4837, lng: 127.0324 }, // 서초구
-  '11710': { lat: 37.5145, lng: 127.1065 }, // 송파구
+  'ALL': { lat: 37.5665, lng: 126.9780 },
+  '11110': { lat: 37.5730, lng: 126.9794 }, // 종로구
+  '11140': { lat: 37.5636, lng: 126.9975 }, // 중구
   '11170': { lat: 37.5326, lng: 126.9900 }, // 용산구
-  '11560': { lat: 37.5264, lng: 126.9248 }, // 영등포구(여의도)
+  '11200': { lat: 37.5634, lng: 127.0368 }, // 성동구
   '11440': { lat: 37.5663, lng: 126.9016 }, // 마포구
-  '11200': { lat: 37.5634, lng: 127.0368 }, // 성동구(성수)
+  '11560': { lat: 37.5264, lng: 126.9248 }, // 영등포구
+  '11620': { lat: 37.4784, lng: 126.9516 }, // 관악구
+  '11650': { lat: 37.4837, lng: 127.0324 }, // 서초구
+  '11680': { lat: 37.4979, lng: 127.0276 }, // 강남구
+  '11710': { lat: 37.5145, lng: 127.1065 }, // 송파구
   '11350': { lat: 37.6542, lng: 127.0568 }, // 노원구
-  '41135': { lat: 37.3827, lng: 127.1189 }, // 분당구(판교)
-  '41117': { lat: 37.2849, lng: 127.0469 }, // 수원 영통구(광교)
-  '41590': { lat: 37.2005, lng: 127.0982 }, // 화성시(동탄)
-  '28185': { lat: 37.3888, lng: 126.6534 }, // 인천 연수구(송도)
-  '41450': { lat: 37.5393, lng: 127.2148 }, // 하남시(미사)
-  '41290': { lat: 37.4293, lng: 126.9877 }, // 과천시
-  '26350': { lat: 35.1631, lng: 129.1636 }, // 부산 해운대구
-  '27260': { lat: 35.8580, lng: 128.6305 }, // 대구 수성구
-  '36110': { lat: 36.4800, lng: 127.2890 }, // 세종시
-  '30200': { lat: 36.3622, lng: 127.3563 }, // 대전 유성구
+  '41135': { lat: 37.3827, lng: 127.1189 }, // 분당구
+  '41117': { lat: 37.2849, lng: 127.0469 }, // 광교
+  '41590': { lat: 37.2005, lng: 127.0982 }, // 동탄
+  '28185': { lat: 37.3888, lng: 126.6534 }, // 송도
+  '41450': { lat: 37.5393, lng: 127.2148 }, // 하남
+  '41290': { lat: 37.4293, lng: 126.9877 }, // 과천
+  '26350': { lat: 35.1631, lng: 129.1636 }, // 해운대
+  '27260': { lat: 35.8580, lng: 128.6305 }, // 대구 수성
+  '36110': { lat: 36.4800, lng: 127.2890 }, // 세종
+  '30200': { lat: 36.3622, lng: 127.3563 }, // 대전 유성
   '29150': { lat: 35.1460, lng: 126.9231 }, // 광주 남구
-};
-
-// 동별 정밀 기준 좌표 사전 (신림역, 봉천역, 사당역, 여의도, 강남역 등)
-const DONG_COORDINATES: Record<string, { lat: number; lng: number }> = {
-  // 관악구
-  '신림동': { lat: 37.4842, lng: 126.9298 }, // 신림역 / 당곡역 중심
-  '봉천동': { lat: 37.4812, lng: 126.9527 }, // 서울대입구역 / 봉천역 중심
-  '남현동': { lat: 37.4725, lng: 126.9815 }, // 사당역 남측
-  
-  // 영등포구
-  '여의도동': { lat: 37.5218, lng: 126.9242 },
-  '당산동': { lat: 37.5340, lng: 126.9020 },
-  '문래동': { lat: 37.5180, lng: 126.8970 },
-  '영등포동': { lat: 37.5170, lng: 126.9080 },
-  '신길동': { lat: 37.5050, lng: 126.9120 },
-  '대림동': { lat: 37.4930, lng: 126.8980 },
-
-  // 강남구
-  '역삼동': { lat: 37.5006, lng: 127.0365 },
-  '대치동': { lat: 37.4932, lng: 127.0628 },
-  '개포동': { lat: 37.4795, lng: 127.0600 },
-  '삼성동': { lat: 37.5140, lng: 127.0565 },
-  '압구정동': { lat: 37.5300, lng: 127.0300 },
-  '청담동': { lat: 37.5250, lng: 127.0500 },
-  '논현동': { lat: 37.5110, lng: 127.0280 },
-  '도곡동': { lat: 37.4880, lng: 127.0450 },
-
-  // 서초구
-  '서초동': { lat: 37.4918, lng: 127.0135 },
-  '반포동': { lat: 37.5045, lng: 127.0050 },
-  '방배동': { lat: 37.4830, lng: 126.9930 },
-  '잠원동': { lat: 37.5150, lng: 127.0120 },
-
-  // 송파구
-  '잠실동': { lat: 37.5130, lng: 127.0850 },
-  '가락동': { lat: 37.4950, lng: 127.1200 },
-  '문정동': { lat: 37.4850, lng: 127.1250 },
-  '신천동': { lat: 37.5180, lng: 127.1000 },
-  '송파동': { lat: 37.5020, lng: 127.1120 },
-
-  // 마포구
-  '상암동': { lat: 37.5775, lng: 126.8915 },
-  '공덕동': { lat: 37.5440, lng: 126.9515 },
-  '서교동': { lat: 37.5550, lng: 126.9215 },
-  '아현동': { lat: 37.5570, lng: 126.9560 },
-  '염리동': { lat: 37.5470, lng: 126.9450 },
-
-  // 성동구
-  '성수동': { lat: 37.5445, lng: 127.0555 },
-  '옥수동': { lat: 37.5410, lng: 127.0170 },
-  '금호동': { lat: 37.5500, lng: 127.0220 },
-  '행당동': { lat: 37.5580, lng: 127.0350 },
-
-  // 분당구
-  '삼평동': { lat: 37.4015, lng: 127.1115 },
-  '백현동': { lat: 37.3930, lng: 127.1120 },
-  '정자동': { lat: 37.3660, lng: 127.1080 },
-  '서현동': { lat: 37.3850, lng: 127.1280 },
-  '이매동': { lat: 37.3960, lng: 127.1270 },
 };
 
 const KAKAO_APP_KEY = import.meta.env.VITE_KAKAO_MAP_APP_KEY || '';
 
-interface ComplexGroup {
+// 전역 영구 지오코딩 캐시
+const GLOBAL_GEOCODE_CACHE = new Map<string, { lat: number; lng: number }>();
+
+// 단지 정보 구조체
+interface GeocodedComplex {
   complexName: string;
   dong: string;
+  district: string;
   representativeTx: MapTransaction;
   items: MapTransaction[];
   count: number;
   lat: number;
   lng: number;
+  isExactGeocoded: boolean;
 }
 
-interface DongCluster {
-  dongName: string;
-  count: number;
+// 화면 픽셀 클러스터 구조체
+interface RenderCluster {
+  id: string;
+  isSingle: boolean;
+  complex?: GeocodedComplex;
+  complexes: GeocodedComplex[];
+  totalCount: number;
   lat: number;
   lng: number;
+  title: string;
+  avgPriceWon: string;
+  highestPriceWon: string;
 }
 
 export default function KakaoRealEstateMap({
@@ -175,84 +133,275 @@ export default function KakaoRealEstateMap({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const overlaysRef = useRef<any[]>([]);
+  
+  const [geocodedVersion, setGeocodedVersion] = useState<number>(0);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mapType, setMapType] = useState<'normal' | 'skyview'>('normal');
   const [zoomLevel, setZoomLevel] = useState<number>(4);
+  const [mapBoundsVersion, setMapBoundsVersion] = useState<number>(0);
   const [showSearchHereBtn, setShowSearchHereBtn] = useState<boolean>(false);
   const [isSearchingHere, setIsSearchingHere] = useState<boolean>(false);
 
-  // 1. 단지별 매물 그룹화 (동별 정밀 좌표 매핑 & 마커 겹침 방지)
-  const complexGroups = useMemo<ComplexGroup[]>(() => {
+  // 복수 매물 팝오버 카드 상태 (동일 단지/클러스터 클릭 시)
+  const [activeClusterModal, setActiveClusterModal] = useState<RenderCluster | null>(null);
+
+  // 1. 단지별 그룹화
+  const rawComplexes = useMemo<GeocodedComplex[]>(() => {
     const baseCoords = REGION_COORDINATES[lawdCd] || REGION_COORDINATES['ALL'];
     const map = new Map<string, MapTransaction[]>();
 
     transactions.forEach((tx) => {
-      const key = `${tx.dong || ''}_${tx.complexName}`;
+      const dong = (tx.dong || '주요동').trim();
+      const complex = (tx.complexName || '미지정단지').trim();
+      const key = `${dong}_${complex}`;
       if (!map.has(key)) {
         map.set(key, []);
       }
       map.get(key)!.push(tx);
     });
 
-    const groups: ComplexGroup[] = [];
+    const result: GeocodedComplex[] = [];
 
-    map.forEach((items, key) => {
+    map.forEach((items) => {
       const rep = items[0];
       const dong = (rep.dong || '').trim();
+      const district = (rep.district || regionName || '').trim();
+      const complexName = rep.complexName.trim();
+      const cacheKey = `${district}_${dong}_${complexName}`;
 
-      // 동별 정밀 좌표 우선 매핑 (신림동 -> 신림역 인근, 봉천동 -> 서울대입구역 인근)
-      const dongCenter = DONG_COORDINATES[dong] || baseCoords;
-      
-      // 단지명 기반 고유 해시 좌표 오프셋 (단지별 약 80~300m 미세 분산)
-      let hash = 0;
-      for (let i = 0; i < key.length; i++) {
-        hash = (hash << 5) - hash + key.charCodeAt(i);
-        hash |= 0;
+      const cached = GLOBAL_GEOCODE_CACHE.get(cacheKey) || GLOBAL_GEOCODE_CACHE.get(`${district}_${dong}`);
+      let lat: number;
+      let lng: number;
+      let isExact = false;
+
+      if (cached) {
+        lat = cached.lat;
+        lng = cached.lng;
+        isExact = true;
+      } else {
+        lat = baseCoords.lat;
+        lng = baseCoords.lng;
       }
-      const latOffset = ((Math.abs(hash) % 100) - 50) * 0.00012;
-      const lngOffset = ((Math.abs(hash * 3) % 100) - 50) * 0.00016;
 
-      groups.push({
-        complexName: rep.complexName,
-        dong: dong,
+      result.push({
+        complexName,
+        dong,
+        district,
         representativeTx: rep,
-        items: items,
+        items,
         count: items.length,
-        lat: dongCenter.lat + latOffset,
-        lng: dongCenter.lng + lngOffset,
+        lat,
+        lng,
+        isExactGeocoded: isExact,
       });
     });
 
-    return groups;
-  }, [transactions, lawdCd]);
+    return result;
+  }, [transactions, lawdCd, regionName, geocodedVersion]);
 
-  // 2. 동별 클러스터 그룹화 (줌 아웃 시 표시용)
-  const dongClusters = useMemo<DongCluster[]>(() => {
-    const baseCoords = REGION_COORDINATES[lawdCd] || REGION_COORDINATES['ALL'];
-    const map = new Map<string, number>();
+  // 2. 카카오 Places & Geocoder를 통한 실제 아파트/빌라 단지 정밀 위치 비동기 조회
+  useEffect(() => {
+    if (!window.kakao || !window.kakao.maps || !window.kakao.maps.services) return;
 
-    transactions.forEach((tx) => {
-      const dong = (tx.dong || '주요동').trim();
-      map.set(dong, (map.get(dong) || 0) + 1);
+    const places = new window.kakao.maps.services.Places();
+    const geocoder = new window.kakao.maps.services.Geocoder();
+
+    const unlocated = rawComplexes.filter(c => !c.isExactGeocoded);
+    if (unlocated.length === 0) return;
+
+    // 최대 40개 단지까지 순차 지오코딩
+    unlocated.slice(0, 40).forEach((c, idx) => {
+      setTimeout(() => {
+        const cacheKey = `${c.district}_${c.dong}_${c.complexName}`;
+        if (GLOBAL_GEOCODE_CACHE.has(cacheKey)) return;
+
+        // 1차: 키워드 검색 ("서울 종로구 신교동 신교빌라", "서울 강남구 압구정동 신현대9차")
+        const keyword = `${c.district} ${c.dong} ${c.complexName}`.trim();
+        places.keywordSearch(keyword, (data: any[], status: any) => {
+          if (status === window.kakao.maps.services.Status.OK && data && data.length > 0) {
+            const exactLat = parseFloat(data[0].y);
+            const exactLng = parseFloat(data[0].x);
+            GLOBAL_GEOCODE_CACHE.set(cacheKey, { lat: exactLat, lng: exactLng });
+            setGeocodedVersion(v => v + 1);
+          } else {
+            // 2차: 주소 검색 (지번/동 검색)
+            const addrKeyword = `${c.district} ${c.dong} ${c.complexName}`.trim();
+            geocoder.addressSearch(addrKeyword, (addrData: any[], addrStatus: any) => {
+              if (addrStatus === window.kakao.maps.services.Status.OK && addrData && addrData.length > 0) {
+                const exactLat = parseFloat(addrData[0].y);
+                const exactLng = parseFloat(addrData[0].x);
+                GLOBAL_GEOCODE_CACHE.set(cacheKey, { lat: exactLat, lng: exactLng });
+                setGeocodedVersion(v => v + 1);
+              } else {
+                // 3차: 법정동 단위 검색
+                const dongKeyword = `${c.district} ${c.dong}`.trim();
+                geocoder.addressSearch(dongKeyword, (dongData: any[], dongStatus: any) => {
+                  if (dongStatus === window.kakao.maps.services.Status.OK && dongData && dongData.length > 0) {
+                    const dongLat = parseFloat(dongData[0].y);
+                    const dongLng = parseFloat(dongData[0].x);
+                    GLOBAL_GEOCODE_CACHE.set(`${c.district}_${c.dong}`, { lat: dongLat, lng: dongLng });
+                    GLOBAL_GEOCODE_CACHE.set(cacheKey, { lat: dongLat, lng: dongLng });
+                    setGeocodedVersion(v => v + 1);
+                  }
+                });
+              }
+            });
+          }
+        });
+      }, idx * 50);
     });
+  }, [rawComplexes]);
 
-    const clusters: DongCluster[] = [];
+  // 3. 화면 픽셀 거리 기반 안티-콜리전 렌더링 연산
+  // ⭐ 핵심: 줌 레벨 1~3 (근접 뷰)에서는 클러스터링을 100% 해제하고 모든 단지를 개별 핀으로 방사형(Spiderfy) 분산!
+  const renderClusters = useMemo<RenderCluster[]>(() => {
+    if (!mapInstanceRef.current || !window.kakao) {
+      return rawComplexes.map((c, i) => ({
+        id: `single-${i}`,
+        isSingle: true,
+        complex: c,
+        complexes: [c],
+        totalCount: c.count,
+        lat: c.lat,
+        lng: c.lng,
+        title: c.complexName,
+        avgPriceWon: c.representativeTx.formattedPrice || c.representativeTx.tradePriceWon || '',
+        highestPriceWon: c.representativeTx.formattedPrice || c.representativeTx.tradePriceWon || '',
+      }));
+    }
 
-    map.forEach((count, dongName) => {
-      const dongCenter = DONG_COORDINATES[dongName] || baseCoords;
-      clusters.push({
-        dongName,
-        count,
-        lat: dongCenter.lat,
-        lng: dongCenter.lng,
+    const projection = mapInstanceRef.current.getProjection();
+    if (!projection) return [];
+
+    // [줌 레벨 1~3: 근접 뷰 -> 클러스터링 완전 해제 (모든 단지 100% 개별 핀 노출)]
+    if (zoomLevel <= 3) {
+      // 동일 좌표에 모여있는 단지들을 부채꼴/원형 방사형(Spiderfy)으로 미세 분산
+      const coordGroupMap = new Map<string, GeocodedComplex[]>();
+      rawComplexes.forEach((c) => {
+        const coordKey = `${c.lat.toFixed(5)}_${c.lng.toFixed(5)}`;
+        if (!coordGroupMap.has(coordKey)) {
+          coordGroupMap.set(coordKey, []);
+        }
+        coordGroupMap.get(coordKey)!.push(c);
       });
+
+      const dispersedList: RenderCluster[] = [];
+
+      coordGroupMap.forEach((complexList) => {
+        const total = complexList.length;
+        complexList.forEach((c, idx) => {
+          let finalLat = c.lat;
+          let finalLng = c.lng;
+
+          if (total > 1) {
+            // 동일 좌표 단지들을 20m 반경 원형으로 부드럽게 펼쳐 개별 핀 표시 (Spiderfy)
+            const angle = (idx / total) * 2 * Math.PI;
+            const radius = 0.00022; // 위도 약 24미터 분산
+            finalLat = c.lat + radius * Math.sin(angle);
+            finalLng = c.lng + (radius * 1.3) * Math.cos(angle);
+          }
+
+          dispersedList.push({
+            id: `single-${c.dong}_${c.complexName}_${idx}`,
+            isSingle: true,
+            complex: c,
+            complexes: [c],
+            totalCount: c.count,
+            lat: finalLat,
+            lng: finalLng,
+            title: c.complexName,
+            avgPriceWon: c.representativeTx.formattedPrice || c.representativeTx.tradePriceWon || '',
+            highestPriceWon: c.representativeTx.formattedPrice || c.representativeTx.tradePriceWon || '',
+          });
+        });
+      });
+
+      return dispersedList;
+    }
+
+    // [줌 레벨 4 이상: 원거리 뷰 -> 화면 픽셀 거리 65px/95px 병합 클러스터링]
+    const mergePixelDist = zoomLevel >= 6 ? 90 : 60;
+    const clusters: RenderCluster[] = [];
+    const pixelPoints: { x: number; y: number; complex: GeocodedComplex }[] = [];
+
+    rawComplexes.forEach((c) => {
+      const latlng = new window.kakao.maps.LatLng(c.lat, c.lng);
+      const pt = projection.pointFromCoords(latlng);
+      pixelPoints.push({ x: pt.x, y: pt.y, complex: c });
     });
+
+    const visited = new Set<number>();
+
+    for (let i = 0; i < pixelPoints.length; i++) {
+      if (visited.has(i)) continue;
+      visited.add(i);
+
+      const target = pixelPoints[i];
+      const memberComplexes: GeocodedComplex[] = [target.complex];
+      let sumLat = target.complex.lat;
+      let sumLng = target.complex.lng;
+
+      for (let j = i + 1; j < pixelPoints.length; j++) {
+        if (visited.has(j)) continue;
+        const other = pixelPoints[j];
+        const dx = target.x - other.x;
+        const dy = target.y - other.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist <= mergePixelDist) {
+          visited.add(j);
+          memberComplexes.push(other.complex);
+          sumLat += other.complex.lat;
+          sumLng += other.complex.lng;
+        }
+      }
+
+      const count = memberComplexes.reduce((acc, c) => acc + c.count, 0);
+      const avgLat = sumLat / memberComplexes.length;
+      const avgLng = sumLng / memberComplexes.length;
+
+      if (memberComplexes.length === 1) {
+        const c = memberComplexes[0];
+        clusters.push({
+          id: `single-${c.complexName}`,
+          isSingle: true,
+          complex: c,
+          complexes: memberComplexes,
+          totalCount: c.count,
+          lat: c.lat,
+          lng: c.lng,
+          title: c.complexName,
+          avgPriceWon: c.representativeTx.formattedPrice || c.representativeTx.tradePriceWon || '',
+          highestPriceWon: c.representativeTx.formattedPrice || c.representativeTx.tradePriceWon || '',
+        });
+      } else {
+        const topPriceTx = memberComplexes
+          .map(c => c.representativeTx)
+          .sort((a, b) => (b.tradePrice || 0) - (a.tradePrice || 0))[0];
+
+        const clusterTitle = memberComplexes[0].dong 
+          ? `${memberComplexes[0].dong}`
+          : `${memberComplexes[0].complexName} 외 ${memberComplexes.length - 1}개`;
+
+        clusters.push({
+          id: `cluster-${i}`,
+          isSingle: false,
+          complexes: memberComplexes,
+          totalCount: count,
+          lat: avgLat,
+          lng: avgLng,
+          title: clusterTitle,
+          avgPriceWon: `${memberComplexes.length}개 단지`,
+          highestPriceWon: topPriceTx?.formattedPrice || topPriceTx?.tradePriceWon || '',
+        });
+      }
+    }
 
     return clusters;
-  }, [transactions, lawdCd]);
+  }, [rawComplexes, zoomLevel, mapBoundsVersion, isMapLoaded]);
 
-  // 3. 카카오맵 SDK 동적 주입 및 초기화 파이프라인
+  // 4. 카카오맵 SDK 초기화
   useEffect(() => {
     let isCancelled = false;
 
@@ -271,7 +420,7 @@ export default function KakaoRealEstateMap({
           const coords = REGION_COORDINATES[lawdCd] || REGION_COORDINATES['ALL'];
           const options = {
             center: new window.kakao.maps.LatLng(coords.lat, coords.lng),
-            level: 4, // 1~14 (4: 단지 뷰)
+            level: 4,
           };
 
           const map = new window.kakao.maps.Map(container, options);
@@ -282,15 +431,18 @@ export default function KakaoRealEstateMap({
           map.setMaxLevel(8);
           map.setMinLevel(1);
 
-          // 줌 레벨 변경 리스너
           window.kakao.maps.event.addListener(map, 'zoom_changed', () => {
-            const lvl = map.getLevel();
-            setZoomLevel(lvl);
+            setZoomLevel(map.getLevel());
+            setMapBoundsVersion(v => v + 1);
           });
 
-          // 드래그 종료 리스너 (현재 영역 재검색 버튼 표시)
           window.kakao.maps.event.addListener(map, 'dragend', () => {
             setShowSearchHereBtn(true);
+            setMapBoundsVersion(v => v + 1);
+          });
+
+          window.kakao.maps.event.addListener(map, 'bounds_changed', () => {
+            setMapBoundsVersion(v => v + 1);
           });
 
         } catch (e: any) {
@@ -335,7 +487,7 @@ export default function KakaoRealEstateMap({
       const timeout = setTimeout(() => {
         clearInterval(checkInterval);
         if (!isMapLoaded && !isCancelled) {
-          setLoadError('카카오맵 로딩 타임아웃. 카카오 콘솔 Web 플랫폼에 http://localhost:15173 등록 여부를 확인해주세요.');
+          setLoadError('카카오맵 로딩 타임아웃.');
         }
       }, 5000);
 
@@ -351,204 +503,183 @@ export default function KakaoRealEstateMap({
     };
   }, []);
 
-  // 4. 지역 변경 시 중심좌표 PanTo
+  // 5. 지역 변경 시 중심좌표 이동
   useEffect(() => {
     if (!mapInstanceRef.current || !window.kakao) return;
     const coords = REGION_COORDINATES[lawdCd] || REGION_COORDINATES['ALL'];
     const moveLatLon = new window.kakao.maps.LatLng(coords.lat, coords.lng);
     mapInstanceRef.current.panTo(moveLatLon);
     setShowSearchHereBtn(false);
+    setActiveClusterModal(null);
   }, [lawdCd]);
 
-  // 5. 선택된 매물 또는 호버된 매물로 중심 이동 및 강조
+  // 6. 선택된 매물로 이동
   useEffect(() => {
     if (!mapInstanceRef.current || !window.kakao || !selectedTx) return;
-    const foundGroup = complexGroups.find(g => g.complexName === selectedTx.complexName);
-    if (foundGroup) {
-      const pos = new window.kakao.maps.LatLng(foundGroup.lat, foundGroup.lng);
+    const found = rawComplexes.find(c => c.complexName === selectedTx.complexName);
+    if (found) {
+      const pos = new window.kakao.maps.LatLng(found.lat, found.lng);
       mapInstanceRef.current.panTo(pos);
     }
-  }, [selectedTx]);
+  }, [selectedTx, rawComplexes]);
 
-  // 6. 마커 오버레이 렌더링 (단지별 컴팩트/익스팬딩 마커 or 줌아웃 동별 클러스터)
+  // 7. 커스텀 오버레이 렌더링
   useEffect(() => {
     if (!mapInstanceRef.current || !window.kakao || !isMapLoaded) return;
 
-    // 기존 오버레이 초기화
     overlaysRef.current.forEach((overlay) => overlay.setMap(null));
     overlaysRef.current = [];
 
-    // [MODE A] 줌 레벨 6 이상: 동별 네온 글래스 클러스터 뱃지
-    if (zoomLevel >= 6) {
-      dongClusters.forEach((cluster) => {
-        const position = new window.kakao.maps.LatLng(cluster.lat, cluster.lng);
+    renderClusters.forEach((cluster) => {
+      const position = new window.kakao.maps.LatLng(cluster.lat, cluster.lng);
+
+      if (!cluster.isSingle) {
+        // [CASE A] 원거리 클러스터 뱃지
         const clusterEl = document.createElement('div');
-        clusterEl.className = 'kakao-dong-cluster cursor-pointer select-none';
+        clusterEl.className = 'kakao-smart-cluster cursor-pointer select-none';
         clusterEl.innerHTML = `
           <div style="
-            background: radial-gradient(circle at center, rgba(14, 165, 233, 0.95), rgba(30, 27, 75, 0.95));
-            border: 2px solid #38BDF8;
-            box-shadow: 0 0 25px rgba(56, 189, 248, 0.6), inset 0 0 10px rgba(56, 189, 248, 0.4);
-            border-radius: 50%;
-            width: 72px;
-            height: 72px;
+            background: radial-gradient(circle at center, rgba(13, 148, 136, 0.95), rgba(15, 23, 42, 0.95));
+            border: 2px solid #2DD4BF;
+            box-shadow: 0 0 20px rgba(45, 212, 191, 0.5), 0 4px 12px rgba(0,0,0,0.8);
+            border-radius: 24px;
+            padding: 5px 12px;
             display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            gap: 6px;
             color: #FFFFFF;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            white-space: nowrap;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             transform: scale(1);
           ">
-            <span style="font-size: 11px; font-weight: 800; letter-spacing: -0.3px;">${cluster.dongName}</span>
-            <span style="font-size: 12px; font-weight: 900; font-family: monospace; color: #FDE047;">${cluster.count}건</span>
+            <span style="font-size: 11px; font-weight: 800; color: #FFFFFF;">${cluster.title}</span>
+            <span style="font-size: 11px; font-weight: 900; font-family: monospace; color: #5EEAD4; background: rgba(0,0,0,0.3); padding: 1px 6px; border-radius: 12px; border: 1px solid rgba(45,212,191,0.3);">
+              ${cluster.totalCount}건
+            </span>
           </div>
         `;
 
+        clusterEl.onmouseenter = () => { clusterEl.style.transform = 'scale(1.1)'; };
+        clusterEl.onmouseleave = () => { clusterEl.style.transform = 'scale(1)'; };
+
         clusterEl.onclick = () => {
-          mapInstanceRef.current.setLevel(4);
-          mapInstanceRef.current.panTo(position);
+          const currentLvl = mapInstanceRef.current.getLevel();
+          if (currentLvl > 2) {
+            mapInstanceRef.current.setLevel(Math.max(1, currentLvl - 2));
+            mapInstanceRef.current.panTo(position);
+          } else {
+            // 이미 줌 레벨 1~2일 때는 매물 리스트 팝오버 노출
+            setActiveClusterModal(cluster);
+          }
         };
 
         const overlay = new window.kakao.maps.CustomOverlay({
           position: position,
           content: clusterEl,
-          zIndex: 20,
+          zIndex: 25,
         });
 
         overlay.setMap(mapInstanceRef.current);
         overlaysRef.current.push(overlay);
-      });
 
-      return;
-    }
-
-    // [MODE B] 줌 레벨 5 이하: 단지별 컴팩트 & 익스팬딩 칩 마커 (단지 묶음 렌더링)
-    complexGroups.forEach((group) => {
-      const position = new window.kakao.maps.LatLng(group.lat, group.lng);
-      const tx = group.representativeTx;
-      const isSelected = selectedTx?.complexName === group.complexName;
-      const isHovered = hoveredTxKey === group.complexName;
-      const isHighlighted = isSelected || isHovered;
-
-      const isJeonse = tx.dealCategory === 'JEONSE' || tx.tradeType?.includes('전세');
-      const isRent = tx.dealCategory === 'RENT' || tx.tradeType?.includes('월세');
-
-      // 가격 표시
-      const priceText = tx.formattedPrice || tx.tradePriceWon || '시세정보';
-
-      // 가격 추이 칩
-      let trendLabel = '실거래';
-      let trendBg = 'rgba(255,255,255,0.1)';
-      let trendColor = '#E2E8F0';
-
-      if (tx.tradePrice && tx.tradePrice >= 25.0) {
-        trendLabel = '▲ 신고가';
-        trendBg = 'rgba(244, 63, 94, 0.25)';
-        trendColor = '#FDA4AF';
-      } else if (isRent) {
-        trendLabel = '월세 🔶';
-        trendBg = 'rgba(245, 158, 11, 0.25)';
-        trendColor = '#FDE68A';
-      } else if (isJeonse) {
-        trendLabel = '전세 🔷';
-        trendBg = 'rgba(6, 182, 212, 0.25)';
-        trendColor = '#A5F3FC';
       } else {
-        trendLabel = '우상향 📈';
-        trendBg = 'rgba(16, 185, 129, 0.25)';
-        trendColor = '#6EE7B7';
-      }
+        // [CASE B] 개별 단지/건물 정밀 핀포인트 뱃지
+        const c = cluster.complex!;
+        const tx = c.representativeTx;
+        const isSelected = selectedTx?.complexName === c.complexName;
+        const isHovered = hoveredTxKey === c.complexName;
+        const isHighlighted = isSelected || isHovered;
 
-      const markerEl = document.createElement('div');
-      markerEl.className = 'kakao-compact-marker-wrapper cursor-pointer select-none';
-      
-      // 초경량 캡슐 + 호버 시 익스팬딩(Expanding) 디자인
-      markerEl.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; position: relative;">
-          
-          <!-- Marker Capsule Box -->
-          <div style="
-            background: ${isHighlighted ? '#1E1B4B' : 'rgba(11, 19, 43, 0.94)'};
-            backdrop-filter: blur(16px);
-            border: 1.5px solid ${isHighlighted ? '#2DD4BF' : 'rgba(255, 255, 255, 0.2)'};
-            border-radius: ${isHighlighted ? '14px' : '10px'};
-            padding: ${isHighlighted ? '6px 10px' : '4px 8px'};
-            box-shadow: ${isHighlighted ? '0 0 25px rgba(45, 212, 191, 0.6), 0 10px 20px rgba(0,0,0,0.8)' : '0 4px 15px rgba(0,0,0,0.5)'};
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 2px;
-            transform: ${isHighlighted ? 'scale(1.12)' : 'scale(1)'};
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            min-width: 80px;
-          ">
-            <!-- Top Header: Complex Name & Count Badge -->
-            <div style="display: flex; align-items: center; gap: 4px; width: 100%; justify-content: space-between;">
-              <span style="font-size: 11px; font-weight: 800; color: #FFFFFF; max-width: 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                ${group.complexName}
+        const isJeonse = tx.dealCategory === 'JEONSE' || tx.tradeType?.includes('전세');
+        const isRent = tx.dealCategory === 'RENT' || tx.tradeType?.includes('월세');
+
+        let typeBg = 'rgba(16, 185, 129, 0.25)';
+        let typeBorder = 'rgba(16, 185, 129, 0.5)';
+        let typeColor = '#6EE7B7';
+        let typeLabel = '매매';
+
+        if (isRent) {
+          typeBg = 'rgba(245, 158, 11, 0.25)';
+          typeBorder = 'rgba(245, 158, 11, 0.5)';
+          typeColor = '#FDE68A';
+          typeLabel = '월세';
+        } else if (isJeonse) {
+          typeBg = 'rgba(6, 182, 212, 0.25)';
+          typeBorder = 'rgba(6, 182, 212, 0.5)';
+          typeColor = '#A5F3FC';
+          typeLabel = '전세';
+        }
+
+        const priceText = tx.formattedPrice || tx.tradePriceWon || '시세정보';
+
+        const markerEl = document.createElement('div');
+        markerEl.className = 'kakao-pinpoint-marker cursor-pointer select-none';
+
+        markerEl.innerHTML = `
+          <div style="display: flex; flex-direction: column; align-items: center; position: relative;">
+            <div style="
+              background: ${isHighlighted ? '#131B38' : 'rgba(11, 19, 43, 0.94)'};
+              backdrop-filter: blur(16px);
+              border: 1.5px solid ${isHighlighted ? '#2DD4BF' : 'rgba(255, 255, 255, 0.2)'};
+              border-radius: ${isHighlighted ? '14px' : '10px'};
+              padding: ${isHighlighted ? '5px 10px' : '3px 8px'};
+              box-shadow: ${isHighlighted ? '0 0 25px rgba(45, 212, 191, 0.7), 0 8px 20px rgba(0,0,0,0.9)' : '0 3px 12px rgba(0,0,0,0.6)'};
+              display: flex;
+              align-items: center;
+              gap: 5px;
+              white-space: nowrap;
+              transform: ${isHighlighted ? 'scale(1.15)' : 'scale(1)'};
+              transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            ">
+              <span style="font-size: 8px; font-weight: 800; padding: 1px 4px; border-radius: 4px; background: ${typeBg}; color: ${typeColor}; border: 1px solid ${typeBorder};">
+                ${typeLabel}
               </span>
-              ${group.count > 1 ? `
-                <span style="font-size: 9px; font-family: monospace; font-weight: 900; background: rgba(99, 102, 241, 0.3); color: #C7D2FE; padding: 1px 4px; border-radius: 4px; border: 1px solid rgba(99, 102, 241, 0.4);">
-                  +${group.count}
+              <span style="font-size: 11px; font-weight: 800; color: #FFFFFF; max-width: 95px; overflow: hidden; text-overflow: ellipsis;">
+                ${c.complexName}
+              </span>
+              <span style="font-size: 11px; font-weight: 900; font-family: monospace; color: ${isHighlighted ? '#5EEAD4' : '#38BDF8'};">
+                ${priceText}
+              </span>
+              ${c.count > 1 ? `
+                <span style="font-size: 8px; font-family: monospace; font-weight: 900; background: rgba(99, 102, 241, 0.35); color: #C7D2FE; padding: 0 3px; border-radius: 3px;">
+                  +${c.count}
                 </span>
               ` : ''}
             </div>
 
-            <!-- Price Typography -->
-            <div style="font-size: ${isHighlighted ? '13px' : '11px'}; font-weight: 900; font-family: monospace; color: ${isHighlighted ? '#5EEAD4' : '#38BDF8'}; letter-spacing: -0.5px; line-height: 1.2;">
-              ${priceText}
-            </div>
-
-            <!-- Expanding Sub-info on Highlight/Hover -->
-            ${isHighlighted ? `
-              <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 3px; width: 100%; justify-content: space-between;">
-                <span style="font-size: 9px; font-weight: bold; padding: 1px 4px; border-radius: 4px; background: ${trendBg}; color: ${trendColor};">
-                  ${trendLabel}
-                </span>
-                <span style="font-size: 9px; color: #94A3B8; font-family: monospace;">
-                  ${tx.floor || '일반층'} · ${tx.pyeong || 34}평
-                </span>
-              </div>
-            ` : ''}
+            <div style="
+              width: 0; 
+              height: 0; 
+              border-left: 4.5px solid transparent; 
+              border-right: 4.5px solid transparent; 
+              border-top: 5px solid ${isHighlighted ? '#2DD4BF' : 'rgba(11, 19, 43, 0.94)'}; 
+              margin-top: -1px;
+            "></div>
           </div>
+        `;
 
-          <!-- Bottom Pin Arrow -->
-          <div style="
-            width: 0; 
-            height: 0; 
-            border-left: 5px solid transparent; 
-            border-right: 5px solid transparent; 
-            border-top: 6px solid ${isHighlighted ? '#2DD4BF' : 'rgba(11, 19, 43, 0.94)'}; 
-            margin-top: -1px;
-          "></div>
-        </div>
-      `;
+        markerEl.onmouseenter = () => { if (onHoverTx) onHoverTx(c.complexName); };
+        markerEl.onmouseleave = () => { if (onHoverTx) onHoverTx(null); };
+        markerEl.onclick = () => {
+          onSelectTx(tx);
+          if (c.items.length > 1) {
+            setActiveClusterModal(cluster);
+          }
+        };
 
-      markerEl.onmouseenter = () => {
-        if (onHoverTx) onHoverTx(group.complexName);
-      };
+        const overlay = new window.kakao.maps.CustomOverlay({
+          position: position,
+          content: markerEl,
+          yAnchor: 1.15,
+          zIndex: isHighlighted ? 60 : 15,
+        });
 
-      markerEl.onmouseleave = () => {
-        if (onHoverTx) onHoverTx(null);
-      };
-
-      markerEl.onclick = () => {
-        onSelectTx(tx);
-      };
-
-      const overlay = new window.kakao.maps.CustomOverlay({
-        position: position,
-        content: markerEl,
-        yAnchor: 1.15,
-        zIndex: isHighlighted ? 40 : 15,
-      });
-
-      overlay.setMap(mapInstanceRef.current);
-      overlaysRef.current.push(overlay);
+        overlay.setMap(mapInstanceRef.current);
+        overlaysRef.current.push(overlay);
+      }
     });
 
-  }, [complexGroups, dongClusters, zoomLevel, selectedTx, hoveredTxKey, isMapLoaded]);
+  }, [renderClusters, selectedTx, hoveredTxKey, isMapLoaded]);
 
   // 줌 컨트롤 함수
   const handleZoomIn = () => {
@@ -572,7 +703,7 @@ export default function KakaoRealEstateMap({
     }
   };
 
-  // 7. 현재 지도 중심 위치 기반 역지오코딩 & 실시간 재검색
+  // 8. 현재 지도 중심 위치 기반 실시간 재검색
   const handleSearchHere = () => {
     if (!mapInstanceRef.current || !window.kakao) return;
     setIsSearchingHere(true);
@@ -582,14 +713,13 @@ export default function KakaoRealEstateMap({
     const lat = center.getLat();
     const lng = center.getLng();
 
-    // 카카오 services.Geocoder로 행정동/법정동 코드 역조회
     if (window.kakao.maps.services && window.kakao.maps.services.Geocoder) {
       const geocoder = new window.kakao.maps.services.Geocoder();
       geocoder.coord2RegionCode(lng, lat, (result: any[], status: any) => {
         setIsSearchingHere(false);
         if (status === window.kakao.maps.services.Status.OK && result && result.length > 0) {
           const bRegion = result.find((r: any) => r.region_type === 'B') || result[0];
-          const lawdCd = bRegion.code ? bRegion.code.substring(0, 5) : '11620';
+          const lawdCd = bRegion.code ? bRegion.code.substring(0, 5) : '11110';
           const fullLabel = `${bRegion.region_1depth_name} ${bRegion.region_2depth_name} ${bRegion.region_3depth_name || ''}`.trim();
           
           if (onSearchInBounds) {
@@ -602,7 +732,6 @@ export default function KakaoRealEstateMap({
             });
           }
         } else {
-          // 좌표 기반 최근접 지역 매핑 폴백
           fallbackSearchInBounds(lat, lng);
         }
       });
@@ -613,8 +742,8 @@ export default function KakaoRealEstateMap({
   };
 
   const fallbackSearchInBounds = (lat: number, lng: number) => {
-    let closestCode = '11620';
-    let closestName = '서울특별시 관악구';
+    let closestCode = '11110';
+    let closestName = '서울특별시 종로구';
     let minDist = 999999;
 
     Object.entries(REGION_COORDINATES).forEach(([code, c]) => {
@@ -624,12 +753,6 @@ export default function KakaoRealEstateMap({
         closestCode = code;
       }
     });
-
-    // 신림역/봉천역 주변 판별
-    if (lat > 37.47 && lat < 37.49 && lng > 126.91 && lng < 126.96) {
-      closestCode = '11620';
-      closestName = '서울특별시 관악구 신림·봉천';
-    }
 
     if (onSearchInBounds) {
       onSearchInBounds({
@@ -683,7 +806,7 @@ export default function KakaoRealEstateMap({
           <span className="text-xs font-bold text-white">{regionName}</span>
         </div>
         <span className="text-[10px] text-slate-400 font-mono">
-          {zoomLevel >= 6 ? `동별 묶음 ${dongClusters.length}개` : `단지 앵커 ${complexGroups.length}개`}
+          {zoomLevel <= 3 ? `개별 단지 핀포인트 ${renderClusters.length}개` : `화면 내 ${renderClusters.length}개 그룹 (총 ${transactions.length}건)`}
         </span>
       </div>
 
@@ -730,17 +853,70 @@ export default function KakaoRealEstateMap({
         </div>
       </div>
 
-      {/* Bottom Zoom / Mode Indicator */}
+      {/* Popover Detail Modal for Multi-Deal Cluster (단지/클러스터 클릭 시 세부 매물 목록) */}
+      {activeClusterModal && (
+        <div className="absolute bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-80 max-h-72 bg-slate-900/95 backdrop-blur-2xl border border-teal-500/30 rounded-2xl p-3.5 shadow-2xl z-30 flex flex-col gap-2 overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="flex justify-between items-center pb-2 border-b border-white/10 shrink-0">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-teal-400" />
+              <h4 className="text-xs font-black text-white">{activeClusterModal.title}</h4>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-teal-500/15 text-teal-300 font-bold">
+                {activeClusterModal.totalCount}건
+              </span>
+            </div>
+            <button 
+              onClick={() => setActiveClusterModal(null)}
+              className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
+            {activeClusterModal.complexes.flatMap(c => c.items).map((tx, idx) => (
+              <div 
+                key={idx}
+                onClick={() => {
+                  onSelectTx(tx);
+                  setActiveClusterModal(null);
+                }}
+                className="p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-teal-500/30 transition-all cursor-pointer flex justify-between items-center"
+              >
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                      tx.dealCategory === 'RENT' ? 'bg-amber-500/15 text-amber-300' :
+                      tx.dealCategory === 'JEONSE' ? 'bg-cyan-500/15 text-cyan-300' : 'bg-emerald-500/15 text-emerald-300'
+                    }`}>
+                      {tx.dealCategory === 'RENT' ? '월세' : tx.dealCategory === 'JEONSE' ? '전세' : '매매'}
+                    </span>
+                    <span className="font-bold text-white text-[11px]">{tx.complexName}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{tx.area || '전용'} · {tx.floor || '일반층'}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-black text-teal-300">
+                    {tx.formattedPrice || tx.tradePriceWon}
+                  </span>
+                  <p className="text-[9px] text-slate-500">{tx.tradeDate || ''}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Zoom Indicator */}
       <div className="absolute bottom-2 left-2 z-20 pointer-events-none">
         <span className="text-[9px] font-mono text-slate-400 bg-black/60 px-2 py-0.5 rounded border border-white/5">
-          {zoomLevel >= 6 ? '🔍 동 단위 클러스터 모드' : '📍 개별 단지 마커 모드'}
+          {zoomLevel <= 3 ? '📍 100% 정밀 단지 핀포인트 모드 (클러스터 해제)' : `🌐 광역 묶음 모드 (레벨 ${zoomLevel})`}
         </span>
       </div>
 
-      {/* Bottom Watermark Badge */}
+      {/* Bottom Watermark */}
       <div className="absolute bottom-2 right-2 z-20 pointer-events-none opacity-50 hover:opacity-100 transition-opacity">
         <span className="text-[9px] font-mono text-slate-400 bg-black/60 px-2 py-0.5 rounded border border-white/5">
-          Kakao Maps Pro PropTech
+          Kakao Precision Real-Estate Engine
         </span>
       </div>
     </div>

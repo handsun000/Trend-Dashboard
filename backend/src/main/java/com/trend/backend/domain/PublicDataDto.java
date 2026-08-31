@@ -126,4 +126,35 @@ public class PublicDataDto {
         private String category;
         private List<Map<String, Object>> dataPoints;
     }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CurrentWeather {
+        private String stnId;             // 기상대 지점 코드 (예: 108)
+        private String stnName;           // 기상대 지점명 (예: 서울, 부산, 대구 등)
+        private String regionName;        // 대상 지역명 (예: 서울특별시 강남구)
+        private Double currentTemp;       // 현재 기온 (℃)
+        private Double sensoryTemp;       // 체감 온도 (℃)
+        private Double minTemp;           // 오늘 최저 기온
+        private Double maxTemp;           // 오늘 최고 기온
+        private Double humidity;          // 습도 (%)
+        private Double windSpeed;         // 풍속 (m/s)
+        private Double rainfall;          // 일일 누적 강수량 (mm)
+        private String weatherCondition;  // SUNNY, CLOUDY, OVERCAST, RAIN, SNOW, HEATWAVE
+        private String conditionLabel;    // "맑음 ☀️", "구름많음 ⛅", "비/소나기 🌧️", "폭염 특보 🌡️"
+        private String airQuality;        // "GOOD", "MODERATE", "BAD"
+        private String airQualityLabel;   // "좋음 🟢", "보통 🟡", "나쁨 🔴"
+        private Integer aqiValue;         // 통합대기지수 (예: 35)
+        private String alertBadge;        // "폭염주의보 발효 🚨", "쾌적한 날씨 🍃"
+        
+        // 날씨 연계 유통/소비 예측 지표
+        private Double deliveryIndex;     // 배달 외식 수요 지수
+        private Double fnbIndex;          // F&B / 카페 / 빙과류 지수
+        private Double fashionIndex;      // 패션 / 아웃도어 의류 지수
+        private Double energyIndex;       // 냉난방 전력 부하 지수
+        private String aiWeatherReport;   // AI 날씨 & 소비 트렌드 진단 브리핑
+        private String observationTime;   // 관측 시간
+    }
 }

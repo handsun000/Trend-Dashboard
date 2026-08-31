@@ -1,5 +1,7 @@
 package com.trend.backend.batch;
 
+import com.trend.backend.domain.UserAlert;
+import com.trend.backend.domain.UserAlertRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -20,6 +22,7 @@ public class RealtimeTickStreamer {
     private final SimpMessagingTemplate messagingTemplate;
     private final UpbitApiClient upbitApiClient;
     private final KisApiClient kisApiClient;
+    private final UserAlertRepository userAlertRepository;
 
     private final Set<String> activeCryptoTickers = ConcurrentHashMap.newKeySet();
     private final Set<String> activeStockTickers = ConcurrentHashMap.newKeySet();
@@ -45,6 +48,7 @@ public class RealtimeTickStreamer {
     @Scheduled(fixedRate = 3000)
     public void streamRealtimeTicks() {
         String timeStr = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        List<UserAlert> activeAlerts = userAlertRepository.findByIsActiveTrue();
 
         // 1. Dynamic Crypto Ticks from Upbit Open API
         if (!activeCryptoTickers.isEmpty()) {
@@ -53,8 +57,12 @@ public class RealtimeTickStreamer {
                 List<UpbitTickerDto> cryptoTickers = upbitApiClient.fetchRealtimeTickers(marketParam);
                 if (cryptoTickers != null) {
                     for (UpbitTickerDto dto : cryptoTickers) {
-                        String cryptoMessage = String.format("{\"ticker\":\"%s\", \"price\":%.0f, \"time\":\"%s\"}", dto.getMarket(), dto.getTradePrice(), timeStr);
+                        double price = dto.getTradePrice();
+                        String ticker = dto.getMarket();
+                        String cryptoMessage = String.format("{\"ticker\":\"%s\", \"price\":%.0f, \"time\":\"%s\"}", ticker, price, timeStr);
                         messagingTemplate.convertAndSend("/topic/ticks", cryptoMessage);
+
+                        checkAndDispatchAlerts(ticker, price, activeAlerts);
                     }
                 }
             } catch (Exception e) {
@@ -66,11 +74,37 @@ public class RealtimeTickStreamer {
         for (String stockCode : activeStockTickers) {
             try {
                 Double stockPrice = kisApiClient.fetchStockPrice(stockCode);
-                String stockMessage = String.format("{\"ticker\":\"%s\", \"price\":%.0f, \"time\":\"%s\"}", stockCode, stockPrice, timeStr);
-                messagingTemplate.convertAndSend("/topic/ticks", stockMessage);
+                if (stockPrice != null && stockPrice > 0) {
+                    String stockMessage = String.format("{\"ticker\":\"%s\", \"price\":%.0f, \"time\":\"%s\"}", stockCode, stockPrice, timeStr);
+                    messagingTemplate.convertAndSend("/topic/ticks", stockMessage);
+
+                    checkAndDispatchAlerts(stockCode, stockPrice, activeAlerts);
+                }
             } catch (Exception e) {
                 log.warn("Failed to stream Stock tick for {}: {}", stockCode, e.getMessage());
             }
         }
     }
+
+    private void checkAndDispatchAlerts(String ticker, double currentPrice, List<UserAlert> activeAlerts) {
+        if (activeAlerts == null || activeAlerts.isEmpty()) return;
+
+        for (UserAlert alert : activeAlerts) {
+            if (alert.getTicker() != null && alert.getTicker().equalsIgnoreCase(ticker) && Boolean.TRUE.equals(alert.getIsActive())) {
+                double target = alert.getTargetPrice();
+                // 도달 판별: 현재가가 목표가 이상(상향 돌파)인 경우 알림 발송
+                if (currentPrice >= target) {
+                    log.info("🔔 [Realtime Alert Triggered] Ticker: {}, Current: {}, Target: {}", ticker, currentPrice, target);
+                    String alertJson = String.format(
+                            "{\"id\":%d, \"userId\":\"%s\", \"ticker\":\"%s\", \"price\":%.0f, \"targetPrice\":%.0f, \"timestamp\":\"%s\"}",
+                            alert.getId(), alert.getUserId(), ticker, currentPrice, target, LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+                    );
+                    messagingTemplate.convertAndSend("/topic/alerts", alertJson);
+                    alert.setIsActive(false);
+                    userAlertRepository.save(alert);
+                }
+            }
+        }
+    }
 }
+

@@ -46,4 +46,20 @@ public class UpbitApiClient {
         }
         return List.of();
     }
+
+    public List<UpbitOrderbookDto> fetchOrderbook(String markets) {
+        try {
+            UpbitOrderbookDto[] response = restClient.get()
+                    .uri("https://api.upbit.com/v1/orderbook?markets=" + markets)
+                    .retrieve()
+                    .body(UpbitOrderbookDto[].class);
+
+            if (response != null) {
+                return Arrays.asList(response);
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch Upbit live orderbook for {}", markets, e);
+        }
+        return List.of();
+    }
 }

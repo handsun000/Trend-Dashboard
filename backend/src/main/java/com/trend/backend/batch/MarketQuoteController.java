@@ -118,6 +118,18 @@ public class MarketQuoteController {
         return ResponseEntity.ok(fallback);
     }
 
+    @GetMapping("/orderbook")
+    public ResponseEntity<?> getOrderbook(@RequestParam("ticker") String ticker) {
+        String cleanTicker = ticker.trim();
+        if (cleanTicker.startsWith("KRW-") || cleanTicker.startsWith("BTC-") || cleanTicker.startsWith("USDT-")) {
+            List<UpbitOrderbookDto> obList = upbitApiClient.fetchOrderbook(cleanTicker);
+            if (!obList.isEmpty()) {
+                return ResponseEntity.ok(obList.get(0));
+            }
+        }
+        return ResponseEntity.ok(java.util.Collections.emptyMap());
+    }
+
     private double parseDoubleSafe(String val, double defaultVal) {
         if (val == null || val.isBlank()) return defaultVal;
         try {

@@ -1,14 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import Dashboard from './pages/Dashboard';
-import PublicDataCenter from './pages/PublicDataCenter';
-import AlertsView from './pages/AlertsView';
-import SettingsView from './pages/SettingsView';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import { RefreshCw } from 'lucide-react';
+
+// Code-splitting via Dynamic Import (React.lazy)
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const PublicDataCenter = lazy(() => import('./pages/PublicDataCenter'));
+const AlertsView = lazy(() => import('./pages/AlertsView'));
+const SettingsView = lazy(() => import('./pages/SettingsView'));
+
+function ViewLoadingSkeleton() {
+  return (
+    <div className="flex-1 min-h-0 h-full flex flex-col items-center justify-center p-8 text-slate-400 gap-3">
+      <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/10 shadow-2xl backdrop-blur-xl">
+        <RefreshCw className="w-6 h-6 text-teal-400 animate-spin" />
+      </div>
+      <p className="text-xs font-mono font-bold text-slate-300 tracking-wider">LOADING MODULE...</p>
+    </div>
+  );
+}
 
 function App() {
   const [activeView, setActiveView] = useState('dashboard');
@@ -75,10 +89,12 @@ function App() {
       <div className="relative z-10 flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-white/[0.01]">
         <Header />
         <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          {activeView === 'dashboard' && <Dashboard />}
-          {activeView === 'public-data' && <PublicDataCenter />}
-          {activeView === 'alerts' && <AlertsView />}
-          {activeView === 'settings' && <SettingsView />}
+          <Suspense fallback={<ViewLoadingSkeleton />}>
+            {activeView === 'dashboard' && <Dashboard />}
+            {activeView === 'public-data' && <PublicDataCenter />}
+            {activeView === 'alerts' && <AlertsView />}
+            {activeView === 'settings' && <SettingsView />}
+          </Suspense>
         </main>
       </div>
       <ToastContainer />
@@ -87,4 +103,5 @@ function App() {
 }
 
 export default App;
+
 

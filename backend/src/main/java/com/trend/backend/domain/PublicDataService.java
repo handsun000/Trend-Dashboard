@@ -1,5 +1,6 @@
 package com.trend.backend.domain;
 
+import com.trend.backend.batch.ExchangeRateClient;
 import com.trend.backend.batch.KmaApiClient;
 import com.trend.backend.batch.MolitApiClient;
 import jakarta.annotation.PostConstruct;
@@ -19,6 +20,7 @@ public class PublicDataService {
     private final KmaApiClient kmaApiClient;
     private final MolitApiClient molitApiClient;
     private final RegionalCodeRegistry regionalCodeRegistry;
+    private final ExchangeRateClient exchangeRateClient;
 
     // In-memory cache keyed by "district_tradeType_propertyType"
     private final Map<String, List<PublicDataDto.RealEstateTransaction>> txCache = new ConcurrentHashMap<>();
@@ -49,7 +51,7 @@ public class PublicDataService {
     public synchronized void refreshAll() {
         log.info("Refreshing all Public Data from live Open APIs...");
         try {
-            cachedWeather = kmaApiClient.fetchMonthlyWeatherSeries();
+            cachedWeather = kmaApiClient.fetchMonthlyWeatherSeries("11680");
             weatherLastFetched = System.currentTimeMillis();
             
             txCache.clear();
@@ -61,42 +63,38 @@ public class PublicDataService {
     }
 
     public PublicDataDto.SummaryResponse getSummary() {
-        List<KmaApiClient.MonthlyWeather> weatherList = getWeatherMonthlyList();
+        PublicDataDto.CurrentWeather curWeather = kmaApiClient.fetchCurrentWeather("11", "서울");
         List<PublicDataDto.RealEstateTransaction> txList = getRecentTransactions("ALL", "ALL", "ALL");
+        double liveExchangeRate = exchangeRateClient.fetchUsdKrwRate();
 
-        double avgTemp = 28.5;
-        double maxTemp = 34.0;
-        double minTemp = 24.0;
-        double totalRainfall = 180.0;
-        double deliveryIdx = 126.8;
+        double avgTemp = curWeather.getCurrentTemp();
+        double maxTemp = curWeather.getMaxTemp();
+        double minTemp = curWeather.getMinTemp();
+        double totalRainfall = curWeather.getRainfall();
+        double deliveryIdx = curWeather.getDeliveryIndex();
 
-        if (!weatherList.isEmpty()) {
-            KmaApiClient.MonthlyWeather latest = weatherList.get(weatherList.size() - 1);
-            avgTemp = latest.avgTemp;
-            maxTemp = latest.maxTemp;
-            minTemp = latest.minTemp;
-            totalRainfall = latest.totalRainfall;
-            deliveryIdx = latest.deliveryIndex;
-        }
-
-        String highestApt = "갤러리아포레 (성수동1가)";
-        double highestPrice = 92.0;
+        String highestApt = "-";
+        double highestPrice = 0.0;
         if (!txList.isEmpty()) {
             PublicDataDto.RealEstateTransaction topTx = txList.stream()
                     .max(Comparator.comparingDouble(t -> t.getTradePrice() != null ? t.getTradePrice() : 0.0))
                     .orElse(txList.get(0));
             highestApt = String.format("%s (%s)", topTx.getComplexName(), topTx.getDistrict() != null ? topTx.getDistrict() : "수도권");
-            highestPrice = topTx.getTradePrice() != null ? topTx.getTradePrice() : 92.0;
+            highestPrice = topTx.getTradePrice() != null ? topTx.getTradePrice() : 0.0;
         }
 
-        String realEstateInsight = String.format(
-                "국토교통부 실거래가 집계 결과, 최근 전국 최고 거래가는 %s %.1f억원이며, 아파트·오피스텔·빌라 등 전 부동산 유형의 매매/전월세 거래가 실시간 동기화 중입니다.",
-                highestApt, highestPrice
-        );
+        String realEstateInsight = highestPrice > 0 
+                ? String.format("국토교통부 실거래가 집계 결과, 최근 전국 최고 거래가는 %s %.1f억원이며, 실시간 동기화 중입니다.", highestApt, highestPrice)
+                : "국토교통부 실시간 거래 데이터를 동기화 중입니다.";
 
         String weatherInsight = String.format(
-                "기상청 ASOS 서울 관측 결과, 최근 월평균 기온은 %.1f℃(최고 %.1f℃), 강수량은 %.1fmm로 관측되었으며, 이에 따른 배달·F&B 소비지수는 %.1fpt로 집계되었습니다.",
-                avgTemp, maxTemp, totalRainfall, deliveryIdx
+                "기상청 실시간 관측 결과, 현재 서울 기온은 %.1f℃(최고 %.1f℃ / 최저 %.1f℃, 강수 %.1fmm)이며 배달·외식 수요지수는 %.1fpt입니다.",
+                avgTemp, maxTemp, minTemp, totalRainfall, deliveryIdx
+        );
+
+        String macroInsight = String.format(
+                "원/달러 실시간 환율은 %.1f원이며, 한-미 기준금리 격차(1.25%%p) 및 글로벌 통화 유동성이 모니터링되고 있습니다.",
+                liveExchangeRate
         );
 
         return PublicDataDto.SummaryResponse.builder()
@@ -104,7 +102,7 @@ public class PublicDataService {
                 .fedRate(4.00)
                 .cpi(2.0)
                 .ppi(0.9)
-                .exchangeRate(1385.5)
+                .exchangeRate(liveExchangeRate)
                 .seoulApartmentIndex(105.1)
                 .seoulApartmentChange(0.29)
                 .avgTemperature(avgTemp)
@@ -115,7 +113,7 @@ public class PublicDataService {
                 .totalRealEstateTxCount(txList.size())
                 .highestTransactionApt(highestApt)
                 .highestTransactionPrice(highestPrice)
-                .macroInsight("한-미 기준금리 격차가 1.25%p로 축소되었으며, 인플레이션이 2.0% 목표치에 안착하며 금융 안정성이 제고되고 있습니다.")
+                .macroInsight(macroInsight)
                 .realEstateInsight(realEstateInsight)
                 .weatherInsight(weatherInsight)
                 .build();
@@ -237,8 +235,12 @@ public class PublicDataService {
         }
     }
 
-    public List<Map<String, Object>> getWeatherConsumptionSeries() {
-        List<KmaApiClient.MonthlyWeather> weatherList = getWeatherMonthlyList();
+    public PublicDataDto.CurrentWeather getCurrentWeather(String lawdCd, String regionName) {
+        return kmaApiClient.fetchCurrentWeather(lawdCd, regionName);
+    }
+
+    public List<Map<String, Object>> getWeatherConsumptionSeries(String lawdCd) {
+        List<KmaApiClient.MonthlyWeather> weatherList = kmaApiClient.fetchMonthlyWeatherSeries(lawdCd);
         List<Map<String, Object>> series = new ArrayList<>();
 
         for (KmaApiClient.MonthlyWeather mw : weatherList) {
@@ -260,7 +262,7 @@ public class PublicDataService {
 
     private synchronized List<KmaApiClient.MonthlyWeather> getWeatherMonthlyList() {
         if (cachedWeather == null || System.currentTimeMillis() - weatherLastFetched > CACHE_TTL_MS) {
-            cachedWeather = kmaApiClient.fetchMonthlyWeatherSeries();
+            cachedWeather = kmaApiClient.fetchMonthlyWeatherSeries("11680");
             weatherLastFetched = System.currentTimeMillis();
         }
         return cachedWeather;
@@ -293,7 +295,8 @@ public class PublicDataService {
         double[] fed = {5.50, 5.25, 5.00, 5.00, 4.75, 4.75, 4.50, 4.50, 4.25, 4.25, 4.00, 4.00};
         double[] cpi = {2.6, 2.5, 2.3, 2.2, 2.4, 2.3, 2.2, 2.1, 2.0, 2.2, 2.1, 2.0};
         double[] ppi = {1.8, 1.6, 1.4, 1.2, 1.5, 1.4, 1.3, 1.1, 1.0, 1.2, 1.1, 0.9};
-        double[] ex = {1340.5, 1360.0, 1380.2, 1395.0, 1410.0, 1425.5, 1390.0, 1375.0, 1365.2, 1370.0, 1382.4, 1385.5};
+        double liveEx = exchangeRateClient.fetchUsdKrwRate();
+        double[] ex = {1340.5, 1360.0, 1380.2, 1395.0, 1410.0, 1425.5, 1390.0, 1375.0, 1365.2, 1370.0, 1382.4, liveEx};
 
         for (int i = 0; i < dates.length; i++) {
             Map<String, Object> point = new LinkedHashMap<>();

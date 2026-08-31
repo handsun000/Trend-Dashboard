@@ -2,128 +2,286 @@ package com.trend.backend.domain;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
-import java.util.ArrayList;
-import java.util.List;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
 
 @Slf4j
 @Service
 public class MarketNewsService {
 
+    private static final List<String> POSITIVE_KEYWORDS = List.of(
+            "상승", "급등", "최고", "호조", "흑자", "돌파", "순매수", "호실적", "성장",
+            "혁신", "반등", "유입", "랠리", "낙관", "기대", "상향", "독점", "협력", "서프라이즈", "강세"
+    );
+
+    private static final List<String> NEGATIVE_KEYWORDS = List.of(
+            "하락", "급락", "최저", "폭락", "적자", "이탈", "순매도", "경계", "충격",
+            "위기", "둔화", "규제", "소송", "붕괴", "불확실", "악재", "하향", "손실", "약세"
+    );
+
     public MarketNewsDto.NewsResponse getNewsForTicker(String ticker, String name) {
-        String displayName = (name != null && !name.trim().isEmpty()) ? name : ticker;
-        boolean isCrypto = ticker.startsWith("KRW-") || ticker.contains("BTC") || ticker.contains("ETH") || ticker.contains("XRP");
+        String queryTerm = resolveSearchQuery(ticker, name);
+        String displayName = (name != null && !name.trim().isEmpty()) ? name : queryTerm;
 
-        List<MarketNewsDto.NewsItem> items = new ArrayList<>();
+        List<MarketNewsDto.NewsItem> items = fetchLiveGoogleNewsRss(queryTerm, ticker, displayName);
 
-        if (isCrypto) {
-            items.add(MarketNewsDto.NewsItem.builder()
-                    .id("news-c-1")
-                    .ticker(ticker)
-                    .targetName(displayName)
-                    .title(String.format("글로벌 가상자산 현물 ETF 순유입 지속… %s 주도적 상승 랠리 기대", displayName))
-                    .source("코인데스크 코리아")
-                    .publishedAt("8분 전")
-                    .sentiment("POSITIVE")
-                    .sentimentScore(88)
-                    .sentimentLabel("강한 호재 🟢")
-                    .summary(String.format("기관 투자자의 대규모 매수세와 온체인 활성 지갑 수 급증으로 %s의 수급 환경이 대폭 개선되고 있습니다.", displayName))
-                    .impactTags(List.of("#ETF현물유입", "#기관자금", "#온체인강세"))
-                    .url("https://coindesk.com")
-                    .build());
-
-            items.add(MarketNewsDto.NewsItem.builder()
-                    .id("news-c-2")
-                    .ticker(ticker)
-                    .targetName(displayName)
-                    .title(String.format("美 연준 금리 인하 기대감에 가상자산 시장 유동성 확대… %s 24시간 거래대율 급등", displayName))
-                    .source("블룸버그 크립토")
-                    .publishedAt("27분 전")
-                    .sentiment("POSITIVE")
-                    .sentimentScore(76)
-                    .sentimentLabel("호재 🟢")
-                    .summary("거시경제 금리 인하 기조와 글로벌 위험자산 선호 심리가 맞물리며 주요 거래소 거래대금이 폭증하고 있습니다.")
-                    .impactTags(List.of("#금리인하수혜", "#유동성확대", "#거래대금폭증"))
-                    .url("https://bloomberg.com")
-                    .build());
-
-            items.add(MarketNewsDto.NewsItem.builder()
-                    .id("news-c-3")
-                    .ticker(ticker)
-                    .targetName(displayName)
-                    .title(String.format("단기 급등에 따른 차익실현 매물 경계… %s 지지선 테스트 구간 진입", displayName))
-                    .source("연합인포맥스")
-                    .publishedAt("1시간 전")
-                    .sentiment("NEUTRAL")
-                    .sentimentScore(12)
-                    .sentimentLabel("중립/경계 ⚪")
-                    .summary("단기 이동평균선 상단 저항 구간에 도달함에 따라 파생상품 펀딩비 상승 및 단기 숨고르기 가능성이 제기됩니다.")
-                    .impactTags(List.of("#기술적조정", "#지지선테스트", "#펀딩비주의"))
-                    .url("https://einfomax.co.kr")
-                    .build());
-
+        if (items.isEmpty()) {
             return MarketNewsDto.NewsResponse.builder()
                     .ticker(ticker)
                     .targetName(displayName)
-                    .overallSentimentScore(82)
-                    .overallSentimentLabel("매수 우세 / 호재 지배 (82%)")
-                    .aiInsight(String.format("AI 분석 결과, %s는 글로벌 현물 ETF 자금 유입과 위험선호 심리에 힘입어 강한 매수 우세 국면에 위치해 있습니다. 다만 단기 급등 후 과열 지표를 감안한 분할 진입 전략이 권장됩니다.", displayName))
-                    .newsList(items)
+                    .overallSentimentScore(50)
+                    .overallSentimentLabel("중립 ⚪ (0건)")
+                    .aiInsight(String.format("현재 '%s' 관련 실시간 언론 보도 데이터가 집계되지 않았습니다.", displayName))
+                    .newsList(Collections.emptyList())
                     .build();
+        }
+
+        // 전체 감성 점수 계산
+        int totalScore = items.stream().mapToInt(MarketNewsDto.NewsItem::getSentimentScore).sum();
+        int avgScore = Math.max(0, Math.min(100, Math.round((float) totalScore / items.size())));
+
+        String overallLabel;
+        if (avgScore >= 65) {
+            overallLabel = String.format("강한 호재 우세 🟢 (%d%%)", avgScore);
+        } else if (avgScore <= 40) {
+            overallLabel = String.format("주의/경계 국면 🔴 (%d%%)", avgScore);
         } else {
-            items.add(MarketNewsDto.NewsItem.builder()
-                    .id("news-s-1")
-                    .ticker(ticker)
-                    .targetName(displayName)
-                    .title(String.format("%s, 글로벌 빅테크 차세대 공급망 진입 가시화… 목표주가 줄상향", displayName))
-                    .source("한국경제")
-                    .publishedAt("12분 전")
-                    .sentiment("POSITIVE")
-                    .sentimentScore(91)
-                    .sentimentLabel("강한 호재 🟢")
-                    .summary(String.format("AI 반도체 및 첨단 패키징 수요 증가로 %s의 실적 턴어라운드가 가속화되고 있으며, 외국인 및 기관 순매수가 집중되고 있습니다.", displayName))
-                    .impactTags(List.of("#실적서프라이즈", "#빅테크공급망", "#목표가상향"))
-                    .url("https://hankyung.com")
-                    .build());
+            overallLabel = String.format("중립 및 관망세 ⚪ (%d%%)", avgScore);
+        }
 
-            items.add(MarketNewsDto.NewsItem.builder()
-                    .id("news-s-2")
-                    .ticker(ticker)
-                    .targetName(displayName)
-                    .title(String.format("%s 3분기 잠정 영업이익 컨센서스 상회 전망… HBM 및 신성장 포트폴리오 가동", displayName))
-                    .source("매일경제")
-                    .publishedAt("35분 전")
-                    .sentiment("POSITIVE")
-                    .sentimentScore(84)
-                    .sentimentLabel("호재 🟢")
-                    .summary("고부가 가치 프리미엄 제품군 비중 확대와 수율 안정화로 하반기 영업이익률이 전분기 대비 4.2%p 개선될 것으로 전망됩니다.")
-                    .impactTags(List.of("#HBM호조", "#영업이익개선", "#수율안정화"))
-                    .url("https://mk.co.kr")
-                    .build());
+        long posCount = items.stream().filter(i -> "POSITIVE".equals(i.getSentiment())).count();
+        long negCount = items.stream().filter(i -> "NEGATIVE".equals(i.getSentiment())).count();
+        long neuCount = items.size() - posCount - negCount;
 
-            items.add(MarketNewsDto.NewsItem.builder()
-                    .id("news-s-3")
-                    .ticker(ticker)
-                    .targetName(displayName)
-                    .title(String.format("외국인 지분율 연중 최고치 경신… %s, 코스피 지수 견인차 역할", displayName))
-                    .source("연합뉴스")
-                    .publishedAt("1시간 전")
-                    .sentiment("POSITIVE")
-                    .sentimentScore(75)
-                    .sentimentLabel("호재 🟢")
-                    .summary("MSCI 리밸런싱 및 패시브 자금 유입으로 5거래일 연속 외국인 순매수가 이어지며 프로그램 매수세가 유입 중입니다.")
-                    .impactTags(List.of("#외인순매수", "#패시브자금", "#지수견인"))
-                    .url("https://yna.co.kr")
-                    .build());
+        String aiInsight = String.format(
+                "최신 실시간 기사 %d건 전수 분석 결과 [호재 %d건, 악재 %d건, 중립 %d건]으로 종합 감성지수 %d점을 기록 중입니다. 시장 언론 보도는 전반적으로 %s를 형성하고 있습니다.",
+                items.size(), posCount, negCount, neuCount, avgScore,
+                avgScore >= 60 ? "낙관적 기대 심리" : (avgScore <= 40 ? "보수적 리스크 관리 심리" : "중립 관망 기조")
+        );
 
-            return MarketNewsDto.NewsResponse.builder()
-                    .ticker(ticker)
-                    .targetName(displayName)
-                    .overallSentimentScore(85)
-                    .overallSentimentLabel("강한 호재 우세 (85%)")
-                    .aiInsight(String.format("AI 분석 결과, %s 관련 최신 24시간 언론 보도 및 공시 중 85%%가 긍정적 시그널을 보이고 있습니다. 차세대 수주 모멘텀과 외인 수급이 강력한 지지 요인입니다.", displayName))
-                    .newsList(items)
-                    .build();
+        return MarketNewsDto.NewsResponse.builder()
+                .ticker(ticker)
+                .targetName(displayName)
+                .overallSentimentScore(avgScore)
+                .overallSentimentLabel(overallLabel)
+                .aiInsight(aiInsight)
+                .newsList(items)
+                .build();
+    }
+
+    private List<MarketNewsDto.NewsItem> fetchLiveGoogleNewsRss(String queryTerm, String ticker, String displayName) {
+        List<MarketNewsDto.NewsItem> items = new ArrayList<>();
+        HttpURLConnection conn = null;
+
+        try {
+            String encodedQuery = URLEncoder.encode(queryTerm, StandardCharsets.UTF_8);
+            String urlStr = "https://news.google.com/rss/search?q=" + encodedQuery + "&hl=ko&gl=KR&ceid=KR:ko";
+            URL url = URI.create(urlStr).toURL();
+
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            conn.setConnectTimeout(4000);
+            conn.setReadTimeout(5000);
+
+            int status = conn.getResponseCode();
+            if (status != 200) {
+                log.warn("Google News RSS returned HTTP status: {} for query: {}", status, queryTerm);
+                return items;
+            }
+
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            DocumentBuilder builder = factory.newDocumentBuilder();
+
+            try (InputStream in = conn.getInputStream()) {
+                Document doc = builder.parse(in);
+                NodeList itemList = doc.getElementsByTagName("item");
+
+                int maxItems = Math.min(itemList.getLength(), 10);
+                for (int i = 0; i < maxItems; i++) {
+                    Element item = (Element) itemList.item(i);
+                    String rawTitle = getTagValue("title", item);
+                    String link = getTagValue("link", item);
+                    String pubDate = getTagValue("pubDate", item);
+                    String source = getTagValue("source", item);
+                    String description = stripHtml(getTagValue("description", item));
+
+                    // Title & source parsing (Google News usually formats title as "Article Title - Media Name")
+                    String cleanTitle = rawTitle;
+                    if (source.isBlank() && rawTitle.contains(" - ")) {
+                        int lastDash = rawTitle.lastIndexOf(" - ");
+                        cleanTitle = rawTitle.substring(0, lastDash).trim();
+                        source = rawTitle.substring(lastDash + 3).trim();
+                    } else if (rawTitle.contains(" - ")) {
+                        int lastDash = rawTitle.lastIndexOf(" - ");
+                        cleanTitle = rawTitle.substring(0, lastDash).trim();
+                    }
+
+                    if (source.isBlank()) source = "실시간 금융뉴스";
+
+                    // Sentiment Score & Analysis
+                    SentimentResult sentiment = evaluateSentiment(cleanTitle + " " + description);
+
+                    // Publication relative time formatting
+                    String relativeTime = formatRelativeTime(pubDate);
+
+                    // Impact tags derivation
+                    List<String> tags = deriveImpactTags(cleanTitle, sentiment.sentiment);
+
+                    items.add(MarketNewsDto.NewsItem.builder()
+                            .id("live-news-" + i + "-" + Math.abs(cleanTitle.hashCode()))
+                            .ticker(ticker)
+                            .targetName(displayName)
+                            .title(cleanTitle)
+                            .source(source)
+                            .publishedAt(relativeTime)
+                            .sentiment(sentiment.sentiment)
+                            .sentimentScore(sentiment.score)
+                            .sentimentLabel(sentiment.label)
+                            .summary(description.isBlank() ? cleanTitle : description)
+                            .impactTags(tags)
+                            .url(link)
+                            .build());
+                }
+            }
+
+        } catch (Exception e) {
+            log.warn("Failed to fetch live RSS news for query '{}': {}", queryTerm, e.getMessage());
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+
+        return items;
+    }
+
+    private SentimentResult evaluateSentiment(String text) {
+        if (text == null) return new SentimentResult("NEUTRAL", 50, "중립 ⚪");
+
+        int posCount = 0;
+        int negCount = 0;
+
+        for (String kw : POSITIVE_KEYWORDS) {
+            if (text.contains(kw)) posCount++;
+        }
+        for (String kw : NEGATIVE_KEYWORDS) {
+            if (text.contains(kw)) negCount++;
+        }
+
+        int score = 50 + (posCount * 14) - (negCount * 14);
+        score = Math.max(5, Math.min(95, score));
+
+        String sentiment;
+        String label;
+
+        if (score >= 65) {
+            sentiment = "POSITIVE";
+            label = score >= 80 ? "강한 호재 🟢" : "호재 🟢";
+        } else if (score <= 40) {
+            sentiment = "NEGATIVE";
+            label = score <= 25 ? "강한 악재 🔴" : "주의/경계 🔴";
+        } else {
+            sentiment = "NEUTRAL";
+            label = "중립/관망 ⚪";
+        }
+
+        return new SentimentResult(sentiment, score, label);
+    }
+
+    private List<String> deriveImpactTags(String title, String sentiment) {
+        List<String> tags = new ArrayList<>();
+        if (title.contains("실적") || title.contains("영업익") || title.contains("매출")) tags.add("#실적공시");
+        if (title.contains("외국인") || title.contains("기관") || title.contains("수급")) tags.add("#수급동향");
+        if (title.contains("ETF") || title.contains("펀드")) tags.add("#ETF수급");
+        if (title.contains("금리") || title.contains("연준") || title.contains("환율")) tags.add("#거시경제");
+        if (title.contains("AI") || title.contains("반도체") || title.contains("HBM")) tags.add("#AI반도체");
+        if (title.contains("비트코인") || title.contains("가상자산") || title.contains("코인")) tags.add("#온체인");
+        if (title.contains("신고가") || title.contains("급등") || title.contains("돌파")) tags.add("#모멘텀");
+
+        if (tags.isEmpty()) {
+            tags.add("POSITIVE".equals(sentiment) ? "#호재뉴스" : ("NEGATIVE".equals(sentiment) ? "#리스크점검" : "#시장동향"));
+            tags.add("#실시간속보");
+        }
+
+        return tags;
+    }
+
+    private String formatRelativeTime(String pubDateStr) {
+        if (pubDateStr == null || pubDateStr.isBlank()) return "방금 전";
+        try {
+            ZonedDateTime zdt = ZonedDateTime.parse(pubDateStr, DateTimeFormatter.RFC_1123_DATE_TIME);
+            ZonedDateTime now = ZonedDateTime.now(zdt.getZone());
+            long minutes = ChronoUnit.MINUTES.between(zdt, now);
+            if (minutes < 1) return "방금 전";
+            if (minutes < 60) return minutes + "분 전";
+            long hours = ChronoUnit.HOURS.between(zdt, now);
+            if (hours < 24) return hours + "시간 전";
+            long days = ChronoUnit.DAYS.between(zdt, now);
+            return days + "일 전";
+        } catch (Exception e) {
+            return "최신";
+        }
+    }
+
+    private String stripHtml(String html) {
+        if (html == null) return "";
+        return html.replaceAll("<[^>]*>", "").replaceAll("&nbsp;", " ").replaceAll("&quot;", "\"").replaceAll("&amp;", "&").trim();
+    }
+
+    private String getTagValue(String tag, Element element) {
+        NodeList nl = element.getElementsByTagName(tag);
+        if (nl != null && nl.getLength() > 0 && nl.item(0) != null) {
+            return nl.item(0).getTextContent().trim();
+        }
+        return "";
+    }
+
+    private String resolveSearchQuery(String ticker, String name) {
+        if (name != null && !name.trim().isEmpty()) {
+            return name.trim();
+        }
+        if (ticker == null) return "증시";
+
+        String t = ticker.toUpperCase();
+        if (t.contains("BTC") || t.contains("비트코인")) return "비트코인";
+        if (t.contains("ETH") || t.contains("이더리움")) return "이더리움";
+        if (t.contains("XRP") || t.contains("리플")) return "리플 XRP";
+        if (t.contains("SOL") || t.contains("솔라나")) return "솔라나 코인";
+        if (t.contains("DOGE") || t.contains("도지")) return "도지코인";
+        if (t.equals("005930")) return "삼성전자";
+        if (t.equals("000660")) return "SK하이닉스";
+        if (t.equals("035420")) return "NAVER";
+        if (t.equals("035720")) return "카카오";
+        if (t.equals("005380")) return "현대차";
+
+        return ticker;
+    }
+
+    private static class SentimentResult {
+        final String sentiment;
+        final int score;
+        final String label;
+
+        SentimentResult(String sentiment, int score, String label) {
+            this.sentiment = sentiment;
+            this.score = score;
+            this.label = label;
         }
     }
 }
