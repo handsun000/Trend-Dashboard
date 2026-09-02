@@ -7,8 +7,16 @@ import {
   ArrowRight, 
   Zap, 
   MousePointer2,
-  CheckCircle2,
-  RefreshCw
+  ChevronDown,
+  Layers,
+  Cpu,
+  Globe2,
+  BarChart3,
+  Newspaper,
+  ShieldCheck,
+  Compass,
+  ArrowUpRight,
+  Play
 } from 'lucide-react';
 
 interface HomeScrollytellingProps {
@@ -20,15 +28,15 @@ export default function HomeScrollytelling({ onNavigate }: HomeScrollytellingPro
   const animTargetRef = useRef(0);
   const rafRef = useRef<number | null>(null);
 
-  // Smooth Momentum / Lerp Physics Animation Loop
+  // Smooth Lerp Physics Animation Loop (60fps fluid inertia)
   useEffect(() => {
     const updatePhysics = () => {
       setProgress((prev) => {
         const diff = animTargetRef.current - prev;
-        if (Math.abs(diff) < 0.001) {
+        if (Math.abs(diff) < 0.0008) {
           return animTargetRef.current;
         }
-        return prev + diff * 0.14; // smooth fluid damping
+        return prev + diff * 0.12; // buttery smooth damping
       });
       rafRef.current = requestAnimationFrame(updatePhysics);
     };
@@ -39,425 +47,527 @@ export default function HomeScrollytelling({ onNavigate }: HomeScrollytellingPro
     };
   }, []);
 
-  // Direct Wheel Event Handler: Mouse wheel anywhere on stage changes progress smoothly
+  // Direct Mouse Wheel on entire viewport
   const handleWheel = (e: React.WheelEvent) => {
     e.stopPropagation();
-    const delta = e.deltaY * 0.0009;
+    const delta = e.deltaY * 0.00085;
     animTargetRef.current = Math.min(1.0, Math.max(0.0, animTargetRef.current + delta));
   };
 
-  // Jump to specific progress step
-  const setTargetProgress = (target: number) => {
+  // Jump to specific scene progress
+  const goToScene = (target: number) => {
     animTargetRef.current = Math.min(1.0, Math.max(0.0, target));
   };
 
   // Helper for interpolating values
   const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
-  
-  // Phase 1 (Trading): 0.05 to 0.35
-  const t1 = clamp((progress - 0.05) / 0.28, 0, 1);
-  // Phase 2 (Gemini AI): 0.28 to 0.58
-  const t2 = clamp((progress - 0.28) / 0.28, 0, 1);
-  // Phase 3 (PropTech): 0.50 to 0.78
-  const t3 = clamp((progress - 0.50) / 0.28, 0, 1);
-  // Phase 4 (Heatmap/Portfolio): 0.70 to 0.96
-  const t4 = clamp((progress - 0.70) / 0.26, 0, 1);
 
-  // Intro fade out as cards assemble
-  const introOpacity = clamp(1 - (progress * 2.6), 0, 1);
-  const introScale = clamp(1 - (progress * 0.25), 0.75, 1);
+  // Scene Opacities & Transforms based on scroll progress
+  // Scene 1: 0.00 - 0.20
+  const s1Opacity = clamp(1 - (progress / 0.18), 0, 1);
+  const s1Scale = clamp(1 + (progress * 0.3), 1, 1.25);
+  const s1Y = progress * -80;
+
+  // Scene 2 (Trading): 0.18 - 0.45 (peaks around 0.30)
+  const s2Progress = clamp((progress - 0.18) / 0.24, 0, 1);
+  const s2Opacity = progress < 0.18 ? 0 : (progress > 0.45 ? clamp(1 - ((progress - 0.45) / 0.10), 0, 1) : clamp((progress - 0.18) / 0.08, 0, 1));
+  const s2Y = (1 - s2Progress) * 60;
+
+  // Scene 3 (Gemini AI): 0.42 - 0.70 (peaks around 0.55)
+  const s3Progress = clamp((progress - 0.42) / 0.24, 0, 1);
+  const s3Opacity = progress < 0.42 ? 0 : (progress > 0.70 ? clamp(1 - ((progress - 0.70) / 0.10), 0, 1) : clamp((progress - 0.42) / 0.08, 0, 1));
+  const s3Y = (1 - s3Progress) * 60;
+
+  // Scene 4 (PropTech): 0.68 - 0.90 (peaks around 0.80)
+  const s4Progress = clamp((progress - 0.68) / 0.20, 0, 1);
+  const s4Opacity = progress < 0.68 ? 0 : (progress > 0.90 ? clamp(1 - ((progress - 0.90) / 0.08), 0, 1) : clamp((progress - 0.68) / 0.08, 0, 1));
+  const s4Y = (1 - s4Progress) * 60;
+
+  // Scene 5 (Finale Gateway): 0.88 - 1.00
+  const s5Progress = clamp((progress - 0.88) / 0.12, 0, 1);
+  const s5Opacity = clamp((progress - 0.88) / 0.08, 0, 1);
+  const s5Scale = 0.9 + s5Progress * 0.1;
+
+  // Active scene index for UI dot indicator
+  const activeSceneIndex = 
+    progress < 0.20 ? 0 :
+    progress < 0.45 ? 1 :
+    progress < 0.70 ? 2 :
+    progress < 0.88 ? 3 : 4;
 
   return (
     <div 
       onWheel={handleWheel}
-      className="relative w-full h-full min-h-0 flex flex-col p-4 md:p-6 select-none font-sans overflow-hidden bg-[#0B132B]/90 backdrop-blur-3xl"
+      className="relative w-screen h-screen overflow-hidden select-none font-sans bg-[#080D1A] text-slate-100 flex flex-col justify-between"
     >
-      {/* 1. Ambient Dynamic Backlight */}
-      <div className="absolute inset-0 pointer-events-none z-0">
+      {/* ========================================================================= */}
+      {/* 1. LUXURY EDITORIAL BACKGROUND: Deep Slate, Mesh Glow & Architectural Lines */}
+      {/* ========================================================================= */}
+      <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+        {/* Ambient Radial Lights that morph dynamically with scroll */}
         <div 
-          className="absolute -top-32 left-1/4 w-[42rem] h-[42rem] rounded-full bg-emerald-500/15 blur-[140px] transition-all duration-700" 
+          className="absolute -top-40 left-1/4 w-[55rem] h-[55rem] rounded-full bg-emerald-500/15 blur-[160px] transition-all duration-1000"
           style={{ 
-            opacity: 0.25 + progress * 0.6,
-            transform: `scale(${0.8 + progress * 0.4}) translate(${progress * 40}px, ${progress * 20}px)`
+            transform: `translate(${progress * 100}px, ${progress * 50}px) scale(${1 + progress * 0.3})`,
+            opacity: 0.3 + progress * 0.5
           }}
         />
         <div 
-          className="absolute bottom-0 right-1/4 w-[42rem] h-[42rem] rounded-full bg-cyan-500/15 blur-[140px] transition-all duration-700" 
+          className="absolute -bottom-40 right-1/4 w-[55rem] h-[55rem] rounded-full bg-cyan-500/15 blur-[160px] transition-all duration-1000"
           style={{ 
-            opacity: 0.2 + progress * 0.6,
-            transform: `scale(${0.8 + progress * 0.4}) translate(${progress * -40}px, ${progress * -20}px)`
+            transform: `translate(${progress * -100}px, ${progress * -50}px) scale(${1 + progress * 0.3})`,
+            opacity: 0.25 + progress * 0.55
           }}
         />
+        <div 
+          className="absolute top-1/3 right-10 w-[35rem] h-[35rem] rounded-full bg-indigo-600/10 blur-[180px] transition-all duration-1000"
+          style={{ opacity: 0.2 + progress * 0.4 }}
+        />
+
+        {/* Architectural Subtle Grid & Diagonal Chamfer Overlay */}
+        <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.04)_1px,transparent_1px)] [background-size:40px_40px] opacity-60" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#080D1A]/40 to-[#080D1A]" />
       </div>
 
-      {/* 2. Dynamic Center Stage Header (Assembles into top bar) */}
-      <div 
-        className="relative z-10 flex flex-col items-center justify-center text-center transition-all duration-300 pointer-events-none shrink-0 my-auto"
-        style={{
-          opacity: introOpacity,
-          transform: `scale(${introScale}) translateY(${progress * -50}px)`,
-          display: introOpacity <= 0.02 ? 'none' : 'flex',
-        }}
-      >
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-cyan-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-mono font-bold mb-3 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-          <Sparkles className="w-4 h-4 animate-spin text-emerald-400" />
-          <span>PINNED BENTO ASSEMBLY INTELLIGENCE</span>
-        </div>
-
-        <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight leading-tight">
-          TrendDash <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">PRO Hub</span>
-        </h1>
-        <p className="text-sm md:text-base text-slate-300 mt-2.5 max-w-xl font-medium leading-relaxed">
-          마우스 휠을 아래로 굴리면 흩어져 있던 데이터 모듈이 자석처럼 제자리로 조립됩니다.
-        </p>
-
-        <div className="flex items-center gap-2.5 mt-5 px-4 py-2 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-slate-300 font-mono animate-bounce">
-          <MousePointer2 className="w-4 h-4 text-emerald-400" />
-          <span>휠을 아래로 굴리거나 하단 타임라인을 클릭하세요 (Scroll to Assemble)</span>
-        </div>
-      </div>
-
-      {/* 3. Top Mini Ribbon when assembled */}
-      <div 
-        className="relative z-20 flex justify-between items-center pb-2.5 border-b border-white/5 shrink-0 transition-opacity duration-300"
-        style={{ opacity: clamp((progress - 0.15) * 2.5, 0, 1) }}
-      >
-        <div className="flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-          <span className="text-sm font-black text-white tracking-tight">TrendDash Pro Assembled Workspace</span>
-          <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
-            {progress >= 0.95 ? '100% COMPLETE' : `${Math.round(progress * 100)}% ASSEMBLING`}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTargetProgress(progress >= 0.95 ? 0 : 1)}
-            className="px-3 py-1 text-xs font-mono font-bold rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-200 border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
-          >
-            <Zap className="w-3.5 h-3.5 text-yellow-400" />
-            <span>{progress >= 0.95 ? '블록 다시 분해' : '⚡ 즉시 전체 조립'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 4. 2x2 Bento Magnetic Assembly Canvas */}
-      <div className="relative z-10 flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-3.5 md:gap-4 mt-2">
-        
-        {/* ============================================================ */}
-        {/* BENTO CARD 1: TradingView 1s Live Trading Room (Top Left)     */}
-        {/* ============================================================ */}
+      {/* ========================================================================= */}
+      {/* 2. FLOATING GLASS TOP NAVIGATION (ERA Residence / Apple Style)           */}
+      {/* ========================================================================= */}
+      <header className="relative z-50 w-full px-6 md:px-12 py-5 flex items-center justify-between backdrop-blur-md bg-[#080D1A]/40 border-b border-white/5 transition-all duration-300">
+        {/* Brand Logo */}
         <div 
-          onClick={() => onNavigate('dashboard')}
-          className={`group relative bg-white/[0.02] hover:bg-white/[0.05] border rounded-3xl p-4 flex flex-col justify-between transition-all duration-300 cursor-pointer overflow-hidden shadow-2xl backdrop-blur-xl ${
-            t1 >= 0.9 ? 'border-emerald-500/40 hover:border-emerald-400/80 shadow-[0_0_35px_rgba(16,185,129,0.2)]' : 'border-white/10'
-          }`}
-          style={{
-            transform: `
-              translate3d(${(1 - t1) * -140}px, ${(1 - t1) * -90}px, 0)
-              rotate(${(1 - t1) * -12}deg)
-              scale(${0.75 + t1 * 0.25})
-            `,
-            opacity: 0.15 + t1 * 0.85,
-            filter: `blur(${(1 - t1) * 6}px)`,
-          }}
+          onClick={() => goToScene(0)}
+          className="flex items-center gap-3 cursor-pointer group"
         >
-          <div className="absolute top-0 left-0 w-28 h-28 bg-emerald-500/10 rounded-br-full blur-xl pointer-events-none" />
-
-          <div>
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-slate-950 font-black shadow-[0_0_20px_rgba(16,185,129,0.3)]">
-                  <TrendingUp className="w-4 h-4 stroke-[2.5]" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider block">01 / LIVE ENGINE</span>
-                  <h3 className="text-base font-black text-white group-hover:text-emerald-300 transition-colors">
-                    트레이딩 룸 & 1초 틱 스트림
-                  </h3>
-                </div>
-              </div>
-
-              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold animate-pulse">
-                STOMP 1s LIVE
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-emerald-400 via-teal-300 to-cyan-400 text-slate-950 font-black shadow-[0_0_25px_rgba(16,185,129,0.35)] group-hover:scale-105 transition-transform">
+            <TrendingUp className="w-5 h-5 stroke-[2.5]" />
+          </div>
+          <div className="flex flex-col">
+            <div className="flex items-center gap-1.5">
+              <span className="font-serif tracking-widest text-lg font-black text-white uppercase group-hover:text-emerald-300 transition-colors">
+                TrendDash
+              </span>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                PRO
               </span>
             </div>
-
-            <p className="text-xs text-slate-300 mt-2.5 leading-relaxed">
-              TradingView 경량 캔들 차트 탑재. 1초 주기 실시간 틱 수신, MA(5/20/60/120), 볼린저밴드, 거래량 및 10호가창 통합.
-            </p>
-
-            {/* Mini Interactive Preview Graphic */}
-            <div className="mt-3 bg-slate-950/70 border border-white/5 rounded-2xl p-3 flex items-center justify-between font-mono">
-              <div>
-                <span className="text-[10px] text-slate-400 block">삼성전자 (005930)</span>
-                <span className="text-base font-black text-emerald-400 tabular-nums">₩78,500</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 block">비트코인 (KRW-BTC)</span>
-                <span className="text-base font-black text-cyan-300 tabular-nums">₩88,935,000</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-between text-xs font-bold text-emerald-400 mt-2">
-            <span className="font-mono text-[11px] text-slate-400">KIS 주식 2,500+ & Upbit 287 코인</span>
-            <div className="flex items-center gap-1 group-hover:translate-x-1.5 transition-transform">
-              <span>트레이딩 룸 바로가기</span>
-              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-            </div>
+            <span className="text-[10px] font-mono text-slate-400 tracking-wider">
+              SINGLE-PANE INTELLIGENCE
+            </span>
           </div>
         </div>
 
-        {/* ============================================================ */}
-        {/* BENTO CARD 2: Google Gemini 1.5 Flash AI News (Top Right)     */}
-        {/* ============================================================ */}
-        <div 
-          onClick={() => onNavigate('dashboard')}
-          className={`group relative bg-white/[0.02] hover:bg-white/[0.05] border rounded-3xl p-4 flex flex-col justify-between transition-all duration-300 cursor-pointer overflow-hidden shadow-2xl backdrop-blur-xl ${
-            t2 >= 0.9 ? 'border-teal-500/40 hover:border-teal-400/80 shadow-[0_0_35px_rgba(20,184,166,0.2)]' : 'border-white/10'
-          }`}
-          style={{
-            transform: `
-              translate3d(${(1 - t2) * 150}px, ${(1 - t2) * -80}px, 0)
-              rotate(${(1 - t2) * 10}deg)
-              scale(${0.75 + t2 * 0.25})
-            `,
-            opacity: 0.15 + t2 * 0.85,
-            filter: `blur(${(1 - t2) * 6}px)`,
-          }}
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-teal-500/10 rounded-bl-full blur-xl pointer-events-none" />
-
-          <div>
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-gradient-to-br from-teal-400 to-cyan-500 text-slate-950 font-black shadow-[0_0_20px_rgba(20,184,166,0.3)]">
-                  <Sparkles className="w-4 h-4 stroke-[2.5]" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono font-bold text-teal-400 uppercase tracking-wider block">02 / AI INTELLIGENCE</span>
-                  <h3 className="text-base font-black text-white group-hover:text-teal-300 transition-colors">
-                    Gemini 1.5 Flash 실시간 뉴스 & AI
-                  </h3>
-                </div>
-              </div>
-
-              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-teal-500/15 text-teal-300 border border-teal-500/30 font-bold">
-                AI 3-LINE BRIEF
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-300 mt-2.5 leading-relaxed">
-              실시간 경제 속보 전수 분석. Gemini AI가 핵심 3줄 브리핑과 호재/악재 지수(-100~+100), 연관 섹터 태그를 산출.
-            </p>
-
-            {/* Mini AI Preview Box */}
-            <div className="mt-3 bg-slate-950/70 border border-white/5 rounded-2xl p-2.5 space-y-1 text-xs">
-              <div className="flex items-center justify-between font-mono text-[10px]">
-                <span className="text-slate-400">종합 감성 스코어</span>
-                <span className="text-emerald-400 font-bold">82% (강한 호재 🟢)</span>
-              </div>
-              <p className="text-[11px] text-slate-300 truncate font-mono">
-                "01. 삼전·닉스 자사주 매입 및 AI HBM 메모리 공급 확대..."
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-between text-xs font-bold text-teal-400 mt-2">
-            <span className="font-mono text-[11px] text-slate-400">15분 TTL 고속 캐시 & Fallback</span>
-            <div className="flex items-center gap-1 group-hover:translate-x-1.5 transition-transform">
-              <span>AI 뉴스 피드 입장</span>
-              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-            </div>
-          </div>
-        </div>
-
-        {/* ============================================================ */}
-        {/* BENTO CARD 3: KakaoMap PropTech & Public Data (Bottom Left)   */}
-        {/* ============================================================ */}
-        <div 
-          onClick={() => onNavigate('public-data')}
-          className={`group relative bg-white/[0.02] hover:bg-white/[0.05] border rounded-3xl p-4 flex flex-col justify-between transition-all duration-300 cursor-pointer overflow-hidden shadow-2xl backdrop-blur-xl ${
-            t3 >= 0.9 ? 'border-cyan-500/40 hover:border-cyan-400/80 shadow-[0_0_35px_rgba(6,182,212,0.2)]' : 'border-white/10'
-          }`}
-          style={{
-            transform: `
-              translate3d(${(1 - t3) * -150}px, ${(1 - t3) * 90}px, 0)
-              rotate(${(1 - t3) * -8}deg)
-              scale(${0.75 + t3 * 0.25})
-            `,
-            opacity: 0.15 + t3 * 0.85,
-            filter: `blur(${(1 - t3) * 6}px)`,
-          }}
-        >
-          <div className="absolute bottom-0 left-0 w-28 h-28 bg-cyan-500/10 rounded-tr-full blur-xl pointer-events-none" />
-
-          <div>
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 text-slate-950 font-black shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-                  <Building2 className="w-4 h-4 stroke-[2.5]" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider block">03 / PROPTECH & MACRO</span>
-                  <h3 className="text-base font-black text-white group-hover:text-cyan-300 transition-colors">
-                    카카오맵 공공데이터 센터
-                  </h3>
-                </div>
-              </div>
-
-              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold">
-                MAP CLUSTER
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-300 mt-2.5 leading-relaxed">
-              국토교통부 아파트/오피스텔 전국 실거래가, 정밀 지오코딩 & 안티-콜리전 엔진, 기상청 ASOS 날씨 & 계절 소비 지수.
-            </p>
-
-            {/* Mini Map Highlight Box */}
-            <div className="mt-3 bg-slate-950/70 border border-white/5 rounded-2xl p-2.5 flex items-center justify-between font-mono text-xs">
-              <div>
-                <span className="text-[10px] text-slate-400 block">전국 단지 지오코딩</span>
-                <span className="text-slate-200 font-bold">서울·경기·인천 100%</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-400 block">기상청 ASOS</span>
-                <span className="text-cyan-300 font-bold">13개월 소비 상관성</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-between text-xs font-bold text-cyan-400 mt-2">
-            <span className="font-mono text-[11px] text-slate-400">단지별 Bento 상세 모달 & panTo</span>
-            <div className="flex items-center gap-1 group-hover:translate-x-1.5 transition-transform">
-              <span>공공데이터 센터 입장</span>
-              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-            </div>
-          </div>
-        </div>
-
-        {/* ============================================================ */}
-        {/* BENTO CARD 4: Finviz Heatmap & Portfolio P&L (Bottom Right)  */}
-        {/* ============================================================ */}
-        <div 
-          onClick={() => onNavigate('dashboard')}
-          className={`group relative bg-white/[0.02] hover:bg-white/[0.05] border rounded-3xl p-4 flex flex-col justify-between transition-all duration-300 cursor-pointer overflow-hidden shadow-2xl backdrop-blur-xl ${
-            t4 >= 0.9 ? 'border-amber-500/40 hover:border-amber-400/80 shadow-[0_0_35px_rgba(245,158,11,0.2)]' : 'border-white/10'
-          }`}
-          style={{
-            transform: `
-              translate3d(${(1 - t4) * 140}px, ${(1 - t4) * 100}px, 0)
-              rotate(${(1 - t4) * 12}deg)
-              scale(${0.75 + t4 * 0.25})
-            `,
-            opacity: 0.15 + t4 * 0.85,
-            filter: `blur(${(1 - t4) * 6}px)`,
-          }}
-        >
-          <div className="absolute bottom-0 right-0 w-28 h-28 bg-amber-500/10 rounded-tl-full blur-xl pointer-events-none" />
-
-          <div>
-            <div className="flex justify-between items-start">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-slate-950 font-black shadow-[0_0_20px_rgba(245,158,11,0.3)]">
-                  <LayoutGrid className="w-4 h-4 stroke-[2.5]" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider block">04 / MACRO & PORTFOLIO</span>
-                  <h3 className="text-base font-black text-white group-hover:text-amber-300 transition-colors">
-                    섹터 히트맵 & 실시간 P&L
-                  </h3>
-                </div>
-              </div>
-
-              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
-                HEATMAP & P&L
-              </span>
-            </div>
-
-            <p className="text-xs text-slate-300 mt-2.5 leading-relaxed">
-              Finviz 스타일 6대 주식 섹터 및 주요 코인 시총 트리맵. 가상 매수 포지션 등록 시 실시간 총 평가손익 및 수익률(%) 자동 추적.
-            </p>
-
-            {/* Mini Heatmap Preview Chips */}
-            <div className="mt-3 grid grid-cols-3 gap-1.5 font-mono text-[10px]">
-              <div className="p-1.5 rounded-xl bg-emerald-700/40 border border-emerald-500/30 text-center">
-                <span className="block text-slate-300">반도체/AI</span>
-                <span className="text-emerald-300 font-bold">+2.45%</span>
-              </div>
-              <div className="p-1.5 rounded-xl bg-emerald-800/40 border border-emerald-500/30 text-center">
-                <span className="block text-slate-300">바이오</span>
-                <span className="text-emerald-300 font-bold">+1.82%</span>
-              </div>
-              <div className="p-1.5 rounded-xl bg-rose-800/40 border border-rose-500/30 text-center">
-                <span className="block text-slate-300">2차전지</span>
-                <span className="text-rose-300 font-bold">-1.12%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-between text-xs font-bold text-amber-400 mt-2">
-            <span className="font-mono text-[11px] text-slate-400">포트폴리오 자산 배분 도넛 차트</span>
-            <div className="flex items-center gap-1 group-hover:translate-x-1.5 transition-transform">
-              <span>히트맵 & 포트폴리오</span>
-              <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* 5. Bottom Interactive Timeline Stepper Bar */}
-      <div className="relative z-20 flex flex-col sm:flex-row justify-between items-center pt-3 mt-1 shrink-0 font-mono text-[11px] border-t border-white/5 gap-2">
-        <div className="flex items-center gap-1.5 text-slate-400 flex-wrap">
-          <button
-            onClick={() => setTargetProgress(0.0)}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${progress < 0.25 ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30' : 'hover:text-slate-200'}`}
+        {/* Center Quick Navigation Links */}
+        <nav className="hidden md:flex items-center gap-8 font-mono text-xs font-semibold text-slate-300">
+          <button 
+            onClick={() => onNavigate('dashboard')}
+            className="hover:text-emerald-300 transition-colors flex items-center gap-1.5 cursor-pointer py-1"
           >
-            01 INTRO
+            <span>트레이딩 룸</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           </button>
-          <span>➜</span>
-          <button
-            onClick={() => setTargetProgress(0.35)}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${progress >= 0.25 && progress < 0.55 ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30' : 'hover:text-slate-200'}`}
+          <button 
+            onClick={() => onNavigate('public-data')}
+            className="hover:text-cyan-300 transition-colors flex items-center gap-1.5 cursor-pointer py-1"
           >
-            02 TRADING
+            <span>공공데이터 센터</span>
           </button>
-          <span>➜</span>
-          <button
-            onClick={() => setTargetProgress(0.60)}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${progress >= 0.55 && progress < 0.75 ? 'bg-teal-500/20 text-teal-300 font-bold border border-teal-500/30' : 'hover:text-slate-200'}`}
+          <button 
+            onClick={() => onNavigate('alerts')}
+            className="hover:text-teal-300 transition-colors flex items-center gap-1.5 cursor-pointer py-1"
           >
-            03 AI NEWS
+            <span>알림 센터</span>
           </button>
-          <span>➜</span>
-          <button
-            onClick={() => setTargetProgress(0.80)}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${progress >= 0.75 && progress < 0.95 ? 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30' : 'hover:text-slate-200'}`}
+          <button 
+            onClick={() => onNavigate('settings')}
+            className="hover:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer py-1"
           >
-            04 PROPTECH
+            <span>설정</span>
           </button>
-          <span>➜</span>
-          <button
-            onClick={() => setTargetProgress(1.0)}
-            className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${progress >= 0.95 ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'hover:text-slate-200'}`}
-          >
-            05 ASSEMBLED
-          </button>
-        </div>
+        </nav>
 
+        {/* Right Action CTA Button */}
         <div className="flex items-center gap-3">
-          <div className="w-32 h-2 bg-slate-900 rounded-full overflow-hidden border border-white/10 flex">
-            <div 
-              className="h-full bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 rounded-full transition-all duration-100"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
+          <button
+            onClick={() => onNavigate('dashboard')}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 text-slate-950 font-mono font-black text-xs tracking-wider uppercase hover:shadow-[0_0_25px_rgba(16,185,129,0.4)] hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>대시보드 시작하기</span>
+            <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+          </button>
+        </div>
+      </header>
+
+      {/* ========================================================================= */}
+      {/* 3. FULL-BLEED EDITORIAL STAGE (5 Seamless Scenes)                        */}
+      {/* ========================================================================= */}
+      <div className="relative z-20 flex-1 min-h-0 w-full flex items-center justify-center px-6 md:px-16 lg:px-24">
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* SCENE 1: THE HERO - EDITORIAL COUTURE REALITY                           */}
+        {/* ----------------------------------------------------------------------- */}
+        <div 
+          className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 transition-all duration-300 pointer-events-none"
+          style={{
+            opacity: s1Opacity,
+            transform: `scale(${s1Scale}) translateY(${s1Y}px)`,
+            display: s1Opacity <= 0.01 ? 'none' : 'flex'
+          }}
+        >
+          <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-white/[0.03] border border-white/10 text-emerald-300 text-xs font-mono font-bold mb-6 backdrop-blur-md shadow-2xl">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="tracking-widest uppercase">Next-Gen Financial & Geospatial Intelligence</span>
           </div>
-          <span className="text-slate-200 font-bold tabular-nums">{Math.round(progress * 100)}%</span>
+
+          <h1 className="text-4xl md:text-7xl lg:text-8xl font-serif font-black tracking-tight leading-[1.05] text-white max-w-5xl">
+            INTELLIGENCE <br />
+            <span className="font-sans italic font-normal bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 bg-clip-text text-transparent">
+              Beyond Boundaries.
+            </span>
+          </h1>
+
+          <p className="text-base md:text-xl text-slate-300 font-light mt-6 max-w-2xl leading-relaxed">
+            1초 라이브 틱 스트리밍, Google Gemini AI 실시간 뉴스 브리핑, 국토부 전국 실거래가 지오코딩을 
+            하나의 싱글-페인(Single-Pane) 세계관으로 결합합니다.
+          </p>
+
+          <div className="mt-10 flex flex-col items-center gap-3">
+            <div className="px-5 py-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-slate-300 font-mono flex items-center gap-2.5 backdrop-blur-xl animate-bounce">
+              <MousePointer2 className="w-4 h-4 text-emerald-400" />
+              <span>마우스 휠을 아래로 굴려 탐험 시작 (Scroll to Explore)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* SCENE 2: SUB-SECOND TRADING ENGINE (TradingView & 1s Tick Stream)       */}
+        {/* ----------------------------------------------------------------------- */}
+        <div 
+          className="absolute inset-0 flex flex-col lg:flex-row items-center justify-between px-6 md:px-16 lg:px-24 gap-8 transition-all duration-300 pointer-events-none"
+          style={{
+            opacity: s2Opacity,
+            transform: `translateY(${s2Y}px)`,
+            display: s2Opacity <= 0.01 ? 'none' : 'flex'
+          }}
+        >
+          {/* Left Editorial Typography */}
+          <div className="flex-1 max-w-xl text-left pointer-events-auto">
+            <span className="text-xs font-mono font-bold text-emerald-400 tracking-widest uppercase block mb-3">
+              01 / SUB-SECOND LATENCY
+            </span>
+            <h2 className="text-3xl md:text-5xl font-serif font-black text-white leading-tight">
+              TradingView Pro Engine & <br />
+              <span className="font-sans italic text-emerald-300 font-light">1초 라이브 틱 스트림</span>
+            </h2>
+            <p className="text-sm md:text-base text-slate-300 mt-4 leading-relaxed font-light">
+              Recharts의 정적 차트를 탈피하여 TradingView의 고성능 인터랙티브 캔들스틱 차트를 탑재했습니다.
+              1초 주기 WebSocket STOMP 푸시로 마지막 캔들을 실시간 렌더링하며, MA 5/20/60/120, 볼린저밴드 및 10호가창을 지원합니다.
+            </p>
+
+            <div className="mt-6 flex items-center gap-4">
+              <button
+                onClick={() => onNavigate('dashboard')}
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-mono font-bold text-xs flex items-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all"
+              >
+                <span>트레이딩 룸 바로 입장</span>
+                <ArrowUpRight className="w-4 h-4" />
+              </button>
+              <span className="font-mono text-xs text-slate-400">KIS 주식 2,500+ & Upbit 287 코인</span>
+            </div>
+          </div>
+
+          {/* Right Giant Chamfered Live Mockup */}
+          <div className="flex-1 max-w-xl w-full pointer-events-auto">
+            <div className="relative bg-gradient-to-br from-slate-900/90 to-[#0A1124]/90 border border-emerald-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(16,185,129,0.15)] backdrop-blur-2xl">
+              <div className="flex justify-between items-center pb-4 border-b border-white/10 font-mono">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="text-sm font-bold text-white">삼성전자 (005930)</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">1s STREAM</span>
+                </div>
+                <span className="text-lg font-black text-emerald-400 tabular-nums">₩78,500 ▲ +2.45%</span>
+              </div>
+
+              {/* Graphic Candle Mockup */}
+              <div className="h-44 my-4 flex items-end justify-between gap-2 px-2 pt-6">
+                {[45, 60, 52, 78, 65, 85, 90, 75, 95, 110, 105, 130].map((h, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+                    <div className="w-0.5 bg-emerald-400/40 h-4" />
+                    <div 
+                      className="w-full rounded-sm bg-gradient-to-t from-emerald-500 to-teal-300 transition-all duration-500"
+                      style={{ height: `${h}px` }}
+                    />
+                    <div className="w-0.5 bg-emerald-400/40 h-3" />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center pt-3 border-t border-white/5 text-[11px] font-mono text-slate-400">
+                <span>타임프레임: 1m / 5m / 1d / 1w</span>
+                <span className="text-emerald-300">볼린저 밴드 & MA 5/20/60 ON</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* SCENE 3: COGNITIVE ANALYSIS (Google Gemini 1.5 Flash AI News)           */}
+        {/* ----------------------------------------------------------------------- */}
+        <div 
+          className="absolute inset-0 flex flex-col lg:flex-row-reverse items-center justify-between px-6 md:px-16 lg:px-24 gap-8 transition-all duration-300 pointer-events-none"
+          style={{
+            opacity: s3Opacity,
+            transform: `translateY(${s3Y}px)`,
+            display: s3Opacity <= 0.01 ? 'none' : 'flex'
+          }}
+        >
+          {/* Right Editorial Typography */}
+          <div className="flex-1 max-w-xl text-left pointer-events-auto">
+            <span className="text-xs font-mono font-bold text-teal-400 tracking-widest uppercase block mb-3">
+              02 / COGNITIVE ANALYSIS
+            </span>
+            <h2 className="text-3xl md:text-5xl font-serif font-black text-white leading-tight">
+              Google Gemini 1.5 Flash <br />
+              <span className="font-sans italic text-teal-300 font-light">실시간 뉴스 3줄 브리핑</span>
+            </h2>
+            <p className="text-sm md:text-base text-slate-300 mt-4 leading-relaxed font-light">
+              구글 실시간 뉴스 RSS를 전수 수집하여 Gemini AI가 "최근 1시간 3줄 브리핑", 
+              "호재/악재 감성 스코어(-100 ~ +100)", "관련 섹터 영향도"를 즉각 산출합니다.
+              15분 TTL 메모리 캐시로 API 할당량을 철저히 방어합니다.
+            </p>
+
+            <div className="mt-6 flex items-center gap-4">
+              <button
+                onClick={() => onNavigate('dashboard')}
+                className="px-5 py-2.5 rounded-xl bg-teal-400 hover:bg-teal-300 text-slate-950 font-mono font-bold text-xs flex items-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(20,184,166,0.3)] transition-all"
+              >
+                <span>AI 뉴스룸 열기</span>
+                <ArrowUpRight className="w-4 h-4" />
+              </button>
+              <span className="font-mono text-xs text-slate-400">15분 고속 캐시 파이프라인</span>
+            </div>
+          </div>
+
+          {/* Left Giant Hologram AI Card */}
+          <div className="flex-1 max-w-xl w-full pointer-events-auto">
+            <div className="relative bg-gradient-to-br from-slate-900/90 to-[#0C1A2E]/90 border border-teal-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(20,184,166,0.15)] backdrop-blur-2xl space-y-4">
+              <div className="flex justify-between items-center pb-3 border-b border-white/10 font-mono">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-teal-300 animate-spin" />
+                  <span className="text-sm font-bold text-white">SK하이닉스 AI 감성 진단</span>
+                </div>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                  82% 강한 호재 🟢
+                </span>
+              </div>
+
+              {/* 3-line briefing lines */}
+              <div className="space-y-2 font-mono text-xs text-slate-300 bg-slate-950/60 p-4 rounded-2xl border border-white/5">
+                <p className="flex items-start gap-2">
+                  <span className="text-teal-400 font-bold">01.</span>
+                  <span>HBM4E 차세대 메모리 선점 및 주요 글로벌 빅테크 공급 협력 확대</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-teal-400 font-bold">02.</span>
+                  <span>자사주 매입 및 외국인/기관 순매수 수급 유입으로 주가 모멘텀 강화</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-teal-400 font-bold">03.</span>
+                  <span>글로벌 반도체 지수 반등에 따른 섹터 전반의 강력한 상승 견인</span>
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 font-mono text-[11px]">
+                <span className="px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-300 border border-teal-500/20">#AI반도체</span>
+                <span className="px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-300 border border-teal-500/20">#실적공시</span>
+                <span className="px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-300 border border-teal-500/20">#수급모멘텀</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* SCENE 4: GEOSPATIAL PROPTECH & MACRO (KakaoMap & ASOS Weather)          */}
+        {/* ----------------------------------------------------------------------- */}
+        <div 
+          className="absolute inset-0 flex flex-col lg:flex-row items-center justify-between px-6 md:px-16 lg:px-24 gap-8 transition-all duration-300 pointer-events-none"
+          style={{
+            opacity: s4Opacity,
+            transform: `translateY(${s4Y}px)`,
+            display: s4Opacity <= 0.01 ? 'none' : 'flex'
+          }}
+        >
+          {/* Left Editorial Typography */}
+          <div className="flex-1 max-w-xl text-left pointer-events-auto">
+            <span className="text-xs font-mono font-bold text-cyan-400 tracking-widest uppercase block mb-3">
+              03 / GEOSPATIAL INTELLIGENCE
+            </span>
+            <h2 className="text-3xl md:text-5xl font-serif font-black text-white leading-tight">
+              카카오맵 공공데이터 센터 & <br />
+              <span className="font-sans italic text-cyan-300 font-light">전국 부동산 프롭테크</span>
+            </h2>
+            <p className="text-sm md:text-base text-slate-300 mt-4 leading-relaxed font-light">
+              국토교통부 아파트/오피스텔 전국 실거래가 100% 정밀 지오코딩 및 마커 클러스터링을 구현했습니다.
+              아파트 단지별 상세 Bento 모달과 기상청 ASOS 날씨 & 계절 소비 상관성 분석을 제공합니다.
+            </p>
+
+            <div className="mt-6 flex items-center gap-4">
+              <button
+                onClick={() => onNavigate('public-data')}
+                className="px-5 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-mono font-bold text-xs flex items-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all"
+              >
+                <span>공공데이터 센터 탐색</span>
+                <ArrowUpRight className="w-4 h-4" />
+              </button>
+              <span className="font-mono text-xs text-slate-400">서울·경기·인천 100% 커버리지</span>
+            </div>
+          </div>
+
+          {/* Right Giant PropTech Map Card */}
+          <div className="flex-1 max-w-xl w-full pointer-events-auto">
+            <div className="relative bg-gradient-to-br from-slate-900/90 to-[#081726]/90 border border-cyan-500/30 rounded-3xl p-6 shadow-[0_0_50px_rgba(6,182,212,0.15)] backdrop-blur-2xl space-y-4">
+              <div className="flex justify-between items-center pb-3 border-b border-white/10 font-mono">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-cyan-300" />
+                  <span className="text-sm font-bold text-white">서울 강남구 압구정동 현대아파트</span>
+                </div>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                  신고가 갱신 🏢
+                </span>
+              </div>
+
+              {/* Map Preview Grid */}
+              <div className="h-44 bg-slate-950/70 rounded-2xl border border-white/5 p-4 flex flex-col justify-between font-mono text-xs relative overflow-hidden">
+                <div className="flex justify-between items-center z-10">
+                  <span className="text-slate-400">최근 매매 실거래가</span>
+                  <span className="text-base font-black text-cyan-300">₩4,200,000,000</span>
+                </div>
+                <div className="flex justify-between items-center z-10 text-[11px]">
+                  <span className="text-slate-400">전세가율 (GAP)</span>
+                  <span className="text-emerald-400 font-bold">48.5% (안정권)</span>
+                </div>
+                <div className="flex justify-between items-center z-10 text-[11px] pt-2 border-t border-white/5">
+                  <span className="text-slate-400">기상청 ASOS 소비 상관계수</span>
+                  <span className="text-yellow-300 font-bold">+0.74 (강한 상관성)</span>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center text-[11px] font-mono text-slate-400 pt-1">
+                <span>카카오맵 panTo & 클러스터 마커</span>
+                <span className="text-cyan-300">단지별 연도별 갭 추이 차트</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* SCENE 5: FINALE / ENTER THE REALM                                       */}
+        {/* ----------------------------------------------------------------------- */}
+        <div 
+          className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 transition-all duration-300 pointer-events-none"
+          style={{
+            opacity: s5Opacity,
+            transform: `scale(${s5Scale})`,
+            display: s5Opacity <= 0.01 ? 'none' : 'flex'
+          }}
+        >
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold mb-6">
+            <Zap className="w-3.5 h-3.5 text-yellow-400" />
+            <span>ALL SYSTEMS FULLY ASSEMBLED & OPERATIONAL</span>
+          </div>
+
+          <h2 className="text-4xl md:text-7xl font-serif font-black tracking-tight leading-tight text-white max-w-4xl">
+            READY TO EXPLORE <br />
+            <span className="font-sans italic font-normal bg-gradient-to-r from-emerald-300 via-teal-200 to-amber-300 bg-clip-text text-transparent">
+              TrendDash Intelligence
+            </span>
+          </h2>
+
+          <p className="text-sm md:text-lg text-slate-300 font-light mt-4 max-w-xl">
+            지금 바로 전문 트레이딩 룸과 공공데이터 센터를 자유롭게 넘나들며 금융과 지리공간 인텔리전스를 경험하세요.
+          </p>
+
+          <div className="mt-8 flex flex-col sm:flex-row items-center gap-4 pointer-events-auto">
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className="px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 text-slate-950 font-mono font-black text-sm tracking-wider uppercase hover:scale-105 active:scale-95 transition-all shadow-[0_0_35px_rgba(16,185,129,0.4)] flex items-center gap-2 cursor-pointer"
+            >
+              <span>📈 트레이딩 룸 입장하기</span>
+              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            </button>
+
+            <button
+              onClick={() => onNavigate('public-data')}
+              className="px-8 py-4 rounded-2xl bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/15 font-mono font-bold text-sm tracking-wider uppercase hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer backdrop-blur-xl"
+            >
+              <span>🏢 공공데이터 센터 탐색하기</span>
+              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 4. INFINITE LIVE TICKER MARQUEE (Apple / Bloomberg Style)                 */}
+      {/* ========================================================================= */}
+      <div className="relative z-30 w-full py-2.5 bg-black/40 border-t border-white/5 backdrop-blur-md overflow-hidden flex items-center font-mono text-xs">
+        <div className="flex items-center gap-8 whitespace-nowrap animate-marquee">
+          <span className="text-slate-400">🔥 LIVE TICKERS:</span>
+          <span className="text-emerald-400 font-bold">삼성전자 (005930) ₩78,500 ▲ +2.45%</span>
+          <span className="text-slate-500">•</span>
+          <span className="text-emerald-400 font-bold">SK하이닉스 (000660) ₩198,000 ▲ +3.12%</span>
+          <span className="text-slate-500">•</span>
+          <span className="text-cyan-300 font-bold">KRW-BTC ₩88,935,000 ▲ +1.80%</span>
+          <span className="text-slate-500">•</span>
+          <span className="text-teal-300 font-bold">KRW-ETH ₩4,120,000 ▲ +2.15%</span>
+          <span className="text-slate-500">•</span>
+          <span className="text-slate-300">KOSPI 2,682.40 ▲ +1.20%</span>
+          <span className="text-slate-500">•</span>
+          <span className="text-slate-300">NASDAQ 18,240.50 ▲ +0.95%</span>
+          <span className="text-slate-500">•</span>
+          <span className="text-amber-400 font-bold">서울 아파트 평균 매매가 ₩1,240,000,000</span>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* 5. RIGHT VERTICAL EDITORIAL SCENE STEPPER (ERA Residence Style)           */}
+      {/* ========================================================================= */}
+      <aside className="fixed right-6 top-1/2 -translate-y-1/2 z-50 hidden lg:flex flex-col items-end gap-4 font-mono text-[11px] pointer-events-auto">
+        {[
+          { label: '01 HERO', target: 0.00 },
+          { label: '02 TRADING', target: 0.30 },
+          { label: '03 GEMINI AI', target: 0.55 },
+          { label: '04 PROPTECH', target: 0.80 },
+          { label: '05 REALM', target: 1.00 },
+        ].map((item, idx) => (
+          <button
+            key={idx}
+            onClick={() => goToScene(item.target)}
+            className={`group flex items-center gap-3 transition-all cursor-pointer ${
+              activeSceneIndex === idx ? 'text-emerald-300 font-black' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity tracking-widest text-[10px]">
+              {item.label}
+            </span>
+            <div 
+              className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                activeSceneIndex === idx 
+                  ? 'bg-emerald-400 scale-150 shadow-[0_0_12px_rgba(16,185,129,0.8)]' 
+                  : 'bg-slate-700 group-hover:bg-slate-500'
+              }`} 
+            />
+          </button>
+        ))}
+
+        {/* Vertical Progress Line */}
+        <div className="w-0.5 h-16 bg-slate-800 rounded-full mt-2 overflow-hidden">
+          <div 
+            className="w-full bg-emerald-400 transition-all duration-100"
+            style={{ height: `${Math.round(progress * 100)}%` }}
+          />
+        </div>
+      </aside>
 
     </div>
   );

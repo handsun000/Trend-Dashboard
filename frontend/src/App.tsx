@@ -85,20 +85,29 @@ function App() {
         <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:32px_32px] opacity-40"></div>
       </div>
 
-      {/* Main Layout */}
-      <Sidebar activeView={activeView} onViewChange={setActiveView} />
-      <div className="relative z-10 flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-white/[0.01]">
-        <Header />
-        <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+      {/* Main Layout: If activeView is 'home', full-screen cinematic without sidebar */}
+      {activeView === 'home' ? (
+        <main className="relative z-10 w-screen h-screen min-h-0 overflow-hidden flex flex-col">
           <Suspense fallback={<ViewLoadingSkeleton />}>
-            {activeView === 'home' && <HomeScrollytelling onNavigate={setActiveView} />}
-            {activeView === 'dashboard' && <Dashboard />}
-            {activeView === 'public-data' && <PublicDataCenter />}
-            {activeView === 'alerts' && <AlertsView />}
-            {activeView === 'settings' && <SettingsView />}
+            <HomeScrollytelling onNavigate={setActiveView} />
           </Suspense>
         </main>
-      </div>
+      ) : (
+        <>
+          <Sidebar activeView={activeView} onViewChange={setActiveView} />
+          <div className="relative z-10 flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-white/[0.01]">
+            <Header />
+            <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <Suspense fallback={<ViewLoadingSkeleton />}>
+                {activeView === 'dashboard' && <Dashboard />}
+                {activeView === 'public-data' && <PublicDataCenter />}
+                {activeView === 'alerts' && <AlertsView />}
+                {activeView === 'settings' && <SettingsView />}
+              </Suspense>
+            </main>
+          </div>
+        </>
+      )}
       <ToastContainer />
     </div>
   );
