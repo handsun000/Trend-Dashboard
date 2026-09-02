@@ -45,7 +45,7 @@ public class RealtimeTickStreamer {
         }
     }
 
-    @Scheduled(fixedRate = 3000)
+    @Scheduled(fixedRate = 1000)
     public void streamRealtimeTicks() {
         String timeStr = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
         List<UserAlert> activeAlerts = userAlertRepository.findByIsActiveTrue();

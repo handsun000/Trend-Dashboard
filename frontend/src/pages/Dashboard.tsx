@@ -229,7 +229,7 @@ export default function Dashboard() {
             </button>
             <div className="hidden sm:flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>STOMP 3s Stream</span>
+              <span>STOMP 1s Stream</span>
             </div>
           </div>
         </div>

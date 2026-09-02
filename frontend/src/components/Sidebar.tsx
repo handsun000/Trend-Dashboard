@@ -99,7 +99,7 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
         </div>
         <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono mt-1 pt-1 border-t border-white/5">
           <span>KIS & Upbit 286</span>
-          <span className="text-emerald-400 font-bold">STOMP 3s</span>
+          <span className="text-emerald-400 font-bold">STOMP 1s</span>
         </div>
       </div>
     </div>
