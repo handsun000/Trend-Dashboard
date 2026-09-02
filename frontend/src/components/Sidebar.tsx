@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Settings, TrendingUp, Building2, BellRing, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Settings, TrendingUp, Building2, BellRing, Sparkles, Home } from 'lucide-react';
 
 interface SidebarProps {
   activeView: string;
@@ -9,18 +9,25 @@ interface SidebarProps {
 export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const navItems = [
     {
+      id: 'home',
+      label: '인텔리전스 허브',
+      subLabel: '쇼케이스 & 홈',
+      icon: Sparkles,
+      badge: 'PRO',
+    },
+    {
       id: 'dashboard',
       label: '트레이딩 룸',
       subLabel: '주식 & 코인 실시간',
       icon: LayoutDashboard,
-      badge: 'LIVE',
+      badge: '1s LIVE',
     },
     {
       id: 'public-data',
       label: '공공데이터 센터',
       subLabel: '부동산·거시·소비',
       icon: Building2,
-      badge: 'NEW',
+      badge: 'MAP',
     },
     {
       id: 'alerts',
