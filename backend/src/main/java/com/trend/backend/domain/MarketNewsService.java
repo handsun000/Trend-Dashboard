@@ -14,6 +14,7 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -40,7 +41,13 @@ public class MarketNewsService {
         String queryTerm = resolveSearchQuery(ticker, name);
         String displayName = (name != null && !name.trim().isEmpty()) ? name : queryTerm;
 
-        List<MarketNewsDto.NewsItem> items = fetchLiveGoogleNewsRss(queryTerm, ticker, displayName);
+        // 1. 최신 24시간 필터(when:1d) 우선 수집
+        List<MarketNewsDto.NewsItem> items = fetchLiveGoogleNewsRss(queryTerm, ticker, displayName, true);
+
+        // 2. 만약 최근 24시간 기사가 없거나 너무 적으면 전체 검색으로 보강
+        if (items.isEmpty()) {
+            items = fetchLiveGoogleNewsRss(queryTerm, ticker, displayName, false);
+        }
 
         // Gemini AI / Rule-Engine 감성 분석 및 3줄 브리핑 수행
         GeminiDto.AnalysisResult aiResult = geminiAiService.analyzeNewsWithAi(ticker, displayName, items);
@@ -59,13 +66,16 @@ public class MarketNewsService {
                 .build();
     }
 
-    private List<MarketNewsDto.NewsItem> fetchLiveGoogleNewsRss(String queryTerm, String ticker, String displayName) {
-        List<MarketNewsDto.NewsItem> items = new ArrayList<>();
+    private List<MarketNewsDto.NewsItem> fetchLiveGoogleNewsRss(String queryTerm, String ticker, String displayName, boolean filterRecent24h) {
+        List<ParsedArticle> parsedArticles = new ArrayList<>();
         HttpURLConnection conn = null;
 
         try {
             String encodedQuery = URLEncoder.encode(queryTerm, StandardCharsets.UTF_8);
-            String urlStr = "https://news.google.com/rss/search?q=" + encodedQuery + "&hl=ko&gl=KR&ceid=KR:ko";
+            String urlStr = filterRecent24h
+                    ? "https://news.google.com/rss/search?q=" + encodedQuery + "+when:1d&hl=ko&gl=KR&ceid=KR:ko"
+                    : "https://news.google.com/rss/search?q=" + encodedQuery + "&hl=ko&gl=KR&ceid=KR:ko";
+            
             URL url = URI.create(urlStr).toURL();
 
             conn = (HttpURLConnection) url.openConnection();
@@ -77,7 +87,7 @@ public class MarketNewsService {
             int status = conn.getResponseCode();
             if (status != 200) {
                 log.warn("Google News RSS returned HTTP status: {} for query: {}", status, queryTerm);
-                return items;
+                return Collections.emptyList();
             }
 
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -88,8 +98,7 @@ public class MarketNewsService {
                 Document doc = builder.parse(in);
                 NodeList itemList = doc.getElementsByTagName("item");
 
-                int maxItems = Math.min(itemList.getLength(), 10);
-                for (int i = 0; i < maxItems; i++) {
+                for (int i = 0; i < itemList.getLength(); i++) {
                     Element item = (Element) itemList.item(i);
                     String rawTitle = getTagValue("title", item);
                     String link = getTagValue("link", item);
@@ -97,7 +106,6 @@ public class MarketNewsService {
                     String source = getTagValue("source", item);
                     String description = stripHtml(getTagValue("description", item));
 
-                    // Title & source parsing (Google News usually formats title as "Article Title - Media Name")
                     String cleanTitle = rawTitle;
                     if (source.isBlank() && rawTitle.contains(" - ")) {
                         int lastDash = rawTitle.lastIndexOf(" - ");
@@ -110,29 +118,14 @@ public class MarketNewsService {
 
                     if (source.isBlank()) source = "실시간 금융뉴스";
 
-                    // Sentiment Score & Analysis
                     SentimentResult sentiment = evaluateSentiment(cleanTitle + " " + description);
-
-                    // Publication relative time formatting
+                    long epochMilli = parseEpochMilli(pubDate);
                     String relativeTime = formatRelativeTime(pubDate);
-
-                    // Impact tags derivation
                     List<String> tags = deriveImpactTags(cleanTitle, sentiment.sentiment);
 
-                    items.add(MarketNewsDto.NewsItem.builder()
-                            .id("live-news-" + i + "-" + Math.abs(cleanTitle.hashCode()))
-                            .ticker(ticker)
-                            .targetName(displayName)
-                            .title(cleanTitle)
-                            .source(source)
-                            .publishedAt(relativeTime)
-                            .sentiment(sentiment.sentiment)
-                            .sentimentScore(sentiment.score)
-                            .sentimentLabel(sentiment.label)
-                            .summary(description.isBlank() ? cleanTitle : description)
-                            .impactTags(tags)
-                            .url(link)
-                            .build());
+                    parsedArticles.add(new ParsedArticle(
+                            cleanTitle, source, relativeTime, sentiment, description, tags, link, epochMilli
+                    ));
                 }
             }
 
@@ -144,7 +137,40 @@ public class MarketNewsService {
             }
         }
 
+        // 최신 시간순(내림차순) 정렬
+        parsedArticles.sort((a, b) -> Long.compare(b.epochMilli, a.epochMilli));
+
+        List<MarketNewsDto.NewsItem> items = new ArrayList<>();
+        int limit = Math.min(parsedArticles.size(), 10);
+        for (int i = 0; i < limit; i++) {
+            ParsedArticle a = parsedArticles.get(i);
+            items.add(MarketNewsDto.NewsItem.builder()
+                    .id("live-news-" + i + "-" + Math.abs(a.title.hashCode()))
+                    .ticker(ticker)
+                    .targetName(displayName)
+                    .title(a.title)
+                    .source(a.source)
+                    .publishedAt(a.relativeTime)
+                    .sentiment(a.sentiment.sentiment)
+                    .sentimentScore(a.sentiment.score)
+                    .sentimentLabel(a.sentiment.label)
+                    .summary(a.description.isBlank() ? a.title : a.description)
+                    .impactTags(a.tags)
+                    .url(a.link)
+                    .build());
+        }
+
         return items;
+    }
+
+    private long parseEpochMilli(String pubDateStr) {
+        if (pubDateStr == null || pubDateStr.isBlank()) return System.currentTimeMillis();
+        try {
+            ZonedDateTime zdt = ZonedDateTime.parse(pubDateStr, DateTimeFormatter.RFC_1123_DATE_TIME);
+            return zdt.toInstant().toEpochMilli();
+        } catch (Exception e) {
+            return System.currentTimeMillis();
+        }
     }
 
     private SentimentResult evaluateSentiment(String text) {
@@ -258,6 +284,28 @@ public class MarketNewsService {
             this.sentiment = sentiment;
             this.score = score;
             this.label = label;
+        }
+    }
+
+    private static class ParsedArticle {
+        final String title;
+        final String source;
+        final String relativeTime;
+        final SentimentResult sentiment;
+        final String description;
+        final List<String> tags;
+        final String link;
+        final long epochMilli;
+
+        ParsedArticle(String title, String source, String relativeTime, SentimentResult sentiment, String description, List<String> tags, String link, long epochMilli) {
+            this.title = title;
+            this.source = source;
+            this.relativeTime = relativeTime;
+            this.sentiment = sentiment;
+            this.description = description;
+            this.tags = tags;
+            this.link = link;
+            this.epochMilli = epochMilli;
         }
     }
 }
