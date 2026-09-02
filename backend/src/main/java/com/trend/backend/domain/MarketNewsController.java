@@ -5,7 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/market/news")
+@RequestMapping({"/api/v1/news", "/api/v1/market/news"})
 @RequiredArgsConstructor
 public class MarketNewsController {
 
