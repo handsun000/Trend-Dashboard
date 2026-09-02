@@ -22,6 +22,10 @@ export interface NewsResponse {
   overallSentimentScore: number;
   overallSentimentLabel: string;
   aiInsight: string;
+  threeLineBriefing?: string[];
+  sectorImpactTags?: string[];
+  aiModel?: string;
+  cached?: boolean;
   newsList: NewsItem[];
 }
 

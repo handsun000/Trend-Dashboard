@@ -38,6 +38,10 @@ public class MarketNewsDto {
         private int overallSentimentScore;
         private String overallSentimentLabel;
         private String aiInsight;
+        private List<String> threeLineBriefing;
+        private List<String> sectorImpactTags;
+        private String aiModel;
+        private boolean cached;
         private List<NewsItem> newsList;
     }
 }

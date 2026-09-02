@@ -21,7 +21,10 @@ import java.util.*;
 
 @Slf4j
 @Service
+@lombok.RequiredArgsConstructor
 public class MarketNewsService {
+
+    private final GeminiAiService geminiAiService;
 
     private static final List<String> POSITIVE_KEYWORDS = List.of(
             "상승", "급등", "최고", "호조", "흑자", "돌파", "순매수", "호실적", "성장",
@@ -39,46 +42,19 @@ public class MarketNewsService {
 
         List<MarketNewsDto.NewsItem> items = fetchLiveGoogleNewsRss(queryTerm, ticker, displayName);
 
-        if (items.isEmpty()) {
-            return MarketNewsDto.NewsResponse.builder()
-                    .ticker(ticker)
-                    .targetName(displayName)
-                    .overallSentimentScore(50)
-                    .overallSentimentLabel("중립 ⚪ (0건)")
-                    .aiInsight(String.format("현재 '%s' 관련 실시간 언론 보도 데이터가 집계되지 않았습니다.", displayName))
-                    .newsList(Collections.emptyList())
-                    .build();
-        }
-
-        // 전체 감성 점수 계산
-        int totalScore = items.stream().mapToInt(MarketNewsDto.NewsItem::getSentimentScore).sum();
-        int avgScore = Math.max(0, Math.min(100, Math.round((float) totalScore / items.size())));
-
-        String overallLabel;
-        if (avgScore >= 65) {
-            overallLabel = String.format("강한 호재 우세 🟢 (%d%%)", avgScore);
-        } else if (avgScore <= 40) {
-            overallLabel = String.format("주의/경계 국면 🔴 (%d%%)", avgScore);
-        } else {
-            overallLabel = String.format("중립 및 관망세 ⚪ (%d%%)", avgScore);
-        }
-
-        long posCount = items.stream().filter(i -> "POSITIVE".equals(i.getSentiment())).count();
-        long negCount = items.stream().filter(i -> "NEGATIVE".equals(i.getSentiment())).count();
-        long neuCount = items.size() - posCount - negCount;
-
-        String aiInsight = String.format(
-                "최신 실시간 기사 %d건 전수 분석 결과 [호재 %d건, 악재 %d건, 중립 %d건]으로 종합 감성지수 %d점을 기록 중입니다. 시장 언론 보도는 전반적으로 %s를 형성하고 있습니다.",
-                items.size(), posCount, negCount, neuCount, avgScore,
-                avgScore >= 60 ? "낙관적 기대 심리" : (avgScore <= 40 ? "보수적 리스크 관리 심리" : "중립 관망 기조")
-        );
+        // Gemini AI / Rule-Engine 감성 분석 및 3줄 브리핑 수행
+        GeminiDto.AnalysisResult aiResult = geminiAiService.analyzeNewsWithAi(ticker, displayName, items);
 
         return MarketNewsDto.NewsResponse.builder()
                 .ticker(ticker)
                 .targetName(displayName)
-                .overallSentimentScore(avgScore)
-                .overallSentimentLabel(overallLabel)
-                .aiInsight(aiInsight)
+                .overallSentimentScore(aiResult.getSentimentScore())
+                .overallSentimentLabel(aiResult.getSentimentLabel())
+                .aiInsight(aiResult.getComprehensiveSummary())
+                .threeLineBriefing(aiResult.getThreeLineBriefing())
+                .sectorImpactTags(aiResult.getSectorImpactTags())
+                .aiModel("Gemini 1.5 Flash")
+                .cached(true)
                 .newsList(items)
                 .build();
     }

@@ -39,7 +39,7 @@ export function useTradingDashboard() {
   // Active selected entities
   const [selectedStock, setSelectedStock] = useState({ ticker: '005930', name: '삼성전자', market: 'KOSPI' });
   const [selectedCrypto, setSelectedCrypto] = useState({ ticker: 'KRW-BTC', name: '비트코인', market: 'CRYPTO' });
-  const [activeTab, setActiveTab] = useState<'stock' | 'crypto' | 'news'>('stock');
+  const [activeTab, setActiveTab] = useState<'stock' | 'crypto' | 'news' | 'heatmap'>('stock');
 
   // Live Quote States directly from KIS / Upbit APIs
   const [stockQuote, setStockQuote] = useState<MarketQuote | null>(null);

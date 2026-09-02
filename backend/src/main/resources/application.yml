@@ -50,3 +50,6 @@ kis:
 public-data:
   service-key: ${DATA_GO_KR_SERVICE_KEY:dummy_service_key}
 
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+
