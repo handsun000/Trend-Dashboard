@@ -27,3 +27,6 @@ frontend/*.tsbuildinfo
 .DS_Store
 Thumbs.db
 *.log
+scratch/
+__pycache__/
+*.pyc

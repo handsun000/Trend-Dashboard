@@ -10,6 +10,7 @@ import { RefreshCw } from 'lucide-react';
 // Code-splitting via Dynamic Import (React.lazy)
 const HomeScrollytelling = lazy(() => import('./pages/HomeScrollytelling'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const TrainMonitorPage = lazy(() => import('./pages/TrainMonitorPage'));
 const PublicDataCenter = lazy(() => import('./pages/PublicDataCenter'));
 const AlertsView = lazy(() => import('./pages/AlertsView'));
 const SettingsView = lazy(() => import('./pages/SettingsView'));
@@ -100,6 +101,7 @@ function App() {
             <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
               <Suspense fallback={<ViewLoadingSkeleton />}>
                 {activeView === 'dashboard' && <Dashboard />}
+                {activeView === 'train' && <TrainMonitorPage />}
                 {activeView === 'public-data' && <PublicDataCenter />}
                 {activeView === 'alerts' && <AlertsView />}
                 {activeView === 'settings' && <SettingsView />}

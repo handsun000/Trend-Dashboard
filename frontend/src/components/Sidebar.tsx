@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Settings, TrendingUp, Building2, BellRing, Sparkles, Home } from 'lucide-react';
+import { LayoutDashboard, Settings, TrendingUp, Building2, BellRing, Sparkles, Train } from 'lucide-react';
 
 interface SidebarProps {
   activeView: string;
@@ -21,6 +21,13 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
       subLabel: '주식 & 코인 실시간',
       icon: LayoutDashboard,
       badge: '1s LIVE',
+    },
+    {
+      id: 'train',
+      label: '기차표 사냥기',
+      subLabel: 'KTX/SRT 취소표·대기',
+      icon: Train,
+      badge: 'BOT',
     },
     {
       id: 'public-data',
