@@ -558,7 +558,7 @@ Frontend Error State
 
 ## Frontend
 
-* [ ] 대형 Dashboard Component 분리
+* [x] 대형 Dashboard Component 분리 (Dashboard.tsx 및 TrainMonitorPage.tsx 서브모듈화 완료)
 * [x] API Client 모듈화 (apiClient.ts & /api/v1 표준 버저닝 일원화)
 * [ ] 서버 상태 관리 개선
 * [ ] Loading / Empty / Error 상태 표준화
