@@ -2,7 +2,6 @@ package com.trend.backend.domain.korail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,31 +9,21 @@ import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.net.CookieManager;
-import java.net.CookiePolicy;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
- * 코레일 공식 모바일 & 웹 API 통신 클라이언트
- * - 세션 쿠키(JSESSIONID 등) 자동 영속 유지
- * - 안드로이드 최신 네이티브 헤더 에뮬레이션
- * - 암호화 로그인, 실시간 열차 조회, 일반 좌석 예약(1101), 예매대기(1102 & ReservationWait)
+ * 코레일 공식 모바일 100% 라이브 통신 클라이언트 (Python Bridge Engine 연동)
+ * - 철도 운영사 4대 방어 기제 준수 (WAF/Rate Limiting 스마트 지터, Dalvik UA, 패킷 암호화, DynaPath 토큰, 2-Step 정규 트랜잭션)
+ * - 절대 원칙: 가짜 세션/모의 데이터 일체 배제, 오류 투명성 100% 보장
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class KorailClient {
 
-    private final KorailCryptoService cryptoService;
     private final KorailStationRegistry stationRegistry;
     private final ObjectMapper objectMapper;
 
@@ -47,25 +36,37 @@ public class KorailClient {
     @Value("${korail.phone-no:}")
     private String defaultPhoneNo;
 
-    private static final String BASE_URL = "https://www.korail.com/classes/com.korail.mobile";
-    private static final String WEB_URL = "https://www.korail.com/classes/com.korail.mobile";
+    private static final String BRIDGE_SCRIPT = "backend/src/main/resources/korail_bridge.py";
 
-    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
-    private static final String DEVICE = "BH";
-    private static final String VERSION = "999999999";
-
-    private final CookieManager cookieManager = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .cookieHandler(cookieManager)
-            .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
-
-    @Getter
     private volatile KorailDto.LoginSession currentSession = null;
 
     /**
-     * 코레일 회원번호 및 비밀번호 기반 모바일 로그인 (비어있을 시 비밀키 default 계정 사용)
+     * 파이썬 모바일 통신 브릿지 커맨드 실행 엔진
+     */
+    private String runBridge(String... args) throws Exception {
+        List<String> cmd = new ArrayList<>();
+        cmd.add("python");
+        cmd.add(BRIDGE_SCRIPT);
+        cmd.addAll(Arrays.asList(args));
+
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+        }
+        process.waitFor();
+        return sb.toString().trim();
+    }
+
+    /**
+     * 코레일 회원번호 및 비밀번호 기반 모바일 실서버 로그인
+     * (절대 원칙 준수: 가짜 세션 fallback 영구 제거, 실패 시 실서버 에러 메시지 투명 반환)
      */
     public synchronized KorailDto.LoginSession login(String memberNo, String password) {
         try {
@@ -76,48 +77,20 @@ public class KorailClient {
                 password = defaultPassword;
             }
 
-            log.info("코레일 모바일 로그인 시도: 회원번호={}", memberNo);
+            log.info("코레일 모바일 실서버 로그인 시도: 회원번호={}", memberNo);
 
-            // 1단계: 암호화 동적 키 및 인덱스 조회 (code.do)
-            String codeUrl = BASE_URL + ".common.code.do";
-            Map<String, String> codeParams = Map.of("code", "app.login.cphd");
-            String codeResponse = postForm(codeUrl, codeParams);
+            String responseJson = runBridge("login", memberNo, password);
+            JsonNode rootNode = objectMapper.readTree(responseJson);
 
-            JsonNode codeJson = objectMapper.readTree(codeResponse);
-            if (!"SUCC".equals(codeJson.path("strResult").asText())) {
-                String msg = codeJson.path("h_msg_txt").asText("암호화 키 조회 실패");
-                log.error("코레일 code.do 실패: {}", msg);
-                return KorailDto.LoginSession.builder()
-                        .loggedIn(false)
-                        .message("코레일 암호화 키 조회 실패: " + msg)
-                        .build();
-            }
+            boolean success = rootNode.path("success").asBoolean(false);
+            boolean loggedIn = rootNode.path("loggedIn").asBoolean(false);
 
-            JsonNode cphdNode = codeJson.path("app.login.cphd");
-            String encKey = cphdNode.path("key").asText();
-            String encIdx = cphdNode.path("idx").asText();
-
-            // 2단계: 비밀번호 AES-128-CBC Double Base64 암호화
-            String encryptedPwd = cryptoService.encryptPassword(password, encKey);
-
-            // 3단계: 로그인 API 호출
-            String loginUrl = BASE_URL + ".login.Login";
-            Map<String, String> loginParams = new LinkedHashMap<>();
-            loginParams.put("Device", DEVICE);
-            loginParams.put("Version", VERSION);
-            loginParams.put("txtInputFlg", "2"); // 2: 회원번호
-            loginParams.put("txtMemberNo", memberNo);
-            loginParams.put("txtPwd", encryptedPwd);
-            loginParams.put("idx", encIdx);
-
-            String loginResponse = postForm(loginUrl, loginParams);
-            JsonNode loginJson = objectMapper.readTree(loginResponse);
-
-            if ("SUCC".equalsIgnoreCase(loginJson.path("strResult").asText())) {
-                String customerName = loginJson.path("strCustNm").asText(loginJson.path("hc14100En").path("strCustNm").asText("회원"));
-                String customerNo = loginJson.path("strCustNo").asText(loginJson.path("hc14100En").path("strCustNo").asText(""));
-                String mbCrdNo = loginJson.path("strMbCrdNo").asText(loginJson.path("hc14100En").path("strMbCrdNo").asText(memberNo));
-                String mobileKey = loginJson.path("Key").asText("");
+            if (success && loggedIn) {
+                String customerName = rootNode.path("customerName").asText("회원");
+                String customerNo = rootNode.path("customerNo").asText("");
+                String mbCrdNo = rootNode.path("memberNo").asText(memberNo);
+                String mobileKey = rootNode.path("key").asText("");
+                String phoneNo = rootNode.path("phoneNo").asText(defaultPhoneNo);
 
                 this.currentSession = KorailDto.LoginSession.builder()
                         .loggedIn(true)
@@ -125,49 +98,63 @@ public class KorailClient {
                         .customerName(customerName)
                         .customerNo(customerNo)
                         .key(mobileKey)
-                        .message("로그인 성공")
+                        .phoneNo(phoneNo)
+                        .message("코레일 실서버 로그인 성공")
                         .build();
 
-                log.info("코레일 실서버 로그인 성공! 회원명: {}, 회원번호: {}, 고객번호: {}", customerName, mbCrdNo, customerNo);
+                log.info("🎉 코레일 실서버 100% 라이브 로그인 성공! 회원명: {}, 회원번호: {}, 고객번호: {}", customerName, mbCrdNo, customerNo);
                 return this.currentSession;
             } else {
-                String errorMsg = loginJson.path("h_msg_txt").asText(loginJson.path("errMsg").asText(""));
-                log.warn("코레일 로그인 서버 응답: {}", errorMsg);
-                if (memberNo != null && !memberNo.isBlank()) {
-                    this.currentSession = KorailDto.LoginSession.builder()
-                            .loggedIn(true)
-                            .memberNo(memberNo)
-                            .customerName("코레일 회원")
-                            .customerNo("MP" + memberNo)
-                            .key("HOT_SNIPER_SESSION_" + System.currentTimeMillis())
-                            .message("코레일 계정 세션이 안전하게 활성화되었습니다.")
-                            .build();
-                    log.info("코레일 세션 활성화 완료: 회원번호={}", memberNo);
-                    return this.currentSession;
-                }
-                return KorailDto.LoginSession.builder()
+                String errorMsg = rootNode.path("message").asText("코레일 로그인에 실패하였습니다.");
+                log.warn("코레일 실서버 로그인 거절/실패: {}", errorMsg);
+
+                this.currentSession = KorailDto.LoginSession.builder()
                         .loggedIn(false)
                         .message(errorMsg)
                         .build();
+                return this.currentSession;
             }
         } catch (Exception e) {
-            log.error("코레일 로그인 중 예외 발생: {}. 세션 보증 모드 가동", e.getMessage());
-            if (memberNo != null && !memberNo.isBlank()) {
+            log.error("코레일 로그인 중 통신 예외 발생: {}", e.getMessage(), e);
+            this.currentSession = KorailDto.LoginSession.builder()
+                    .loggedIn(false)
+                    .message("로그인 통신 오류: " + e.getMessage())
+                    .build();
+            return this.currentSession;
+        }
+    }
+
+    /**
+     * 현재 로그인 세션 상태 조회 (디스크 세션 자동 복구 지원)
+     */
+    public synchronized KorailDto.LoginSession getCurrentSession() {
+        if (this.currentSession != null && this.currentSession.isLoggedIn()) {
+            return this.currentSession;
+        }
+
+        try {
+            String resp = runBridge("session");
+            JsonNode rootNode = objectMapper.readTree(resp);
+            if (rootNode.path("loggedIn").asBoolean(false)) {
                 this.currentSession = KorailDto.LoginSession.builder()
                         .loggedIn(true)
-                        .memberNo(memberNo)
-                        .customerName("코레일 회원")
-                        .customerNo("MP" + memberNo)
-                        .key("HOT_SNIPER_SESSION_" + System.currentTimeMillis())
-                        .message("코레일 계정 세션이 안전하게 활성화되었습니다.")
+                        .memberNo(rootNode.path("memberNo").asText(""))
+                        .customerName(rootNode.path("customerName").asText("회원"))
+                        .customerNo(rootNode.path("customerNo").asText(""))
+                        .key(rootNode.path("key").asText(""))
+                        .phoneNo(rootNode.path("phoneNo").asText(defaultPhoneNo))
+                        .message("코레일 실서버 활성 세션")
                         .build();
                 return this.currentSession;
             }
-            return KorailDto.LoginSession.builder()
-                    .loggedIn(false)
-                    .message("로그인 오류: " + e.getMessage())
-                    .build();
+        } catch (Exception e) {
+            log.debug("디스크 세션 확인 중 예외: {}", e.getMessage());
         }
+
+        return KorailDto.LoginSession.builder()
+                .loggedIn(false)
+                .message("로그인된 코레일 세션이 없습니다.")
+                .build();
     }
 
     /**
@@ -201,25 +188,7 @@ public class KorailClient {
                 trainGroup = "109"; // 109: 전체 (KTX/SRT 포함)
             }
 
-            // 1단계: 코레일 공식 모바일 실서버 통신 엔진 (x-dynapath-m-token WAF 바이패스 브릿지)
-            String responseBody = null;
-            try {
-                String scriptPath = "c:\\dev\\IdeaProjects\\Trend-Dashboard\\backend\\src\\main\\resources\\korail_bridge.py";
-                ProcessBuilder pb = new ProcessBuilder("python", scriptPath, "search", depName, arrName, date, hour, trainGroup);
-                pb.redirectErrorStream(true);
-                Process process = pb.start();
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        sb.append(line).append("\n");
-                    }
-                    responseBody = sb.toString();
-                }
-                process.waitFor();
-            } catch (Exception netEx) {
-                log.warn("코레일 실서버 브릿지 통신 지연: {}", netEx.getMessage());
-            }
+            String responseBody = runBridge("search", depName, arrName, date, hour, trainGroup);
 
             if (responseBody != null && responseBody.contains("\"strResult\"")) {
                 JsonNode rootNode = objectMapper.readTree(responseBody);
@@ -255,201 +224,101 @@ public class KorailClient {
      * 일반 좌석 즉시 예약 (TicketReservation JobId 1101)
      */
     public KorailDto.ReservationResult reserveSeat(KorailDto.TrainSchedule train, String seatType) {
-        if (currentSession == null || !currentSession.isLoggedIn()) {
+        KorailDto.LoginSession session = getCurrentSession();
+        if (session == null || !session.isLoggedIn()) {
             return KorailDto.ReservationResult.builder()
                     .success(false)
-                    .message("로그인 세션이 없습니다. 먼저 코레일 로그인을 진행해 주세요.")
+                    .message("로그인 세션이 없습니다. 먼저 코레일 실서버 로그인을 진행해 주세요.")
                     .build();
         }
 
         try {
-            log.info("취소표 즉시 예약(1101) 시도: 열차={}, 좌석구분={}", train.getTrainNo(), seatType);
+            log.info("취소표 즉시 예약(1101) 실서버 시도: 열차={}, 좌석구분={}", train.getTrainNo(), seatType);
+            String trainJson = objectMapper.writeValueAsString(train);
 
-            String url = BASE_URL + ".certification.TicketReservation";
-            Map<String, String> params = new LinkedHashMap<>();
-            params.put("Device", DEVICE);
-            params.put("Version", VERSION);
-            params.put("Key", currentSession.getKey());
-            params.put("txtJobId", "1101"); // 1101: 일반 좌석 예약
-            params.put("txtTotPsgCnt", "1");
-            params.put("txtSeatAttCd1", "000");
-            params.put("txtSeatAttCd2", "000");
-            params.put("txtSeatAttCd3", "000");
-            params.put("txtSeatAttCd4", "015");
-            params.put("txtSeatAttCd5", "000");
-            params.put("hidFreeFlg", "N");
-            params.put("txtStndFlg", "N");
-            params.put("txtMenuId", "11");
-            params.put("txtSrcarCnt", "0");
-            params.put("txtJrnyCnt", "1");
+            String responseStr = runBridge("reserve", trainJson, seatType != null ? seatType : "1");
+            JsonNode json = objectMapper.readTree(responseStr);
 
-            // 여정 정보
-            params.put("txtJrnySqno1", "001");
-            params.put("txtJrnyTpCd1", "11");
-            params.put("txtDptDt1", train.getDepartureDate());
-            params.put("txtDptRsStnCd1", train.getDepartureStationCode());
-            params.put("txtDptTm1", train.getDepartureTimeRaw());
-            params.put("txtArvRsStnCd1", train.getArrivalStationCode());
-            params.put("txtTrnNo1", train.getTrainNo());
-            params.put("txtRunDt1", train.getRunDate());
-            params.put("txtTrnClsfCd1", train.getTrainClassCode());
-            params.put("txtPsrmClCd1", "2".equals(seatType) ? "2" : "1"); // 1: 일반실, 2: 특실
-            params.put("txtTrnGpCd1", train.getTrainGroupCode());
+            boolean success = json.path("success").asBoolean(false);
+            String msg = json.path("message").asText("");
+            String pnrNo = json.path("pnrNo").asText("");
+            String limitDate = json.path("limitDate").asText("");
+            String limitTime = json.path("limitTime").asText("");
 
-            // 승객 1명 정보
-            params.put("txtPsgTpCd1", "1"); // 어른
-            params.put("txtDiscKndCd1", "000");
-            params.put("txtCompaCnt1", "1");
-
-            String response = postForm(url, params);
-            JsonNode json = objectMapper.readTree(response);
-
-            if ("SUCC".equalsIgnoreCase(json.path("strResult").asText())) {
-                String pnrNo = json.path("h_pnr_no").asText("");
-                String limitDate = json.path("h_ntisu_lmt_dt").asText("");
-                String limitTime = json.path("h_ntisu_lmt_tm").asText("");
-
-                log.info("🎉 취소표 예약 성공! PNR 번호: {}, 결제기한: {} {}", pnrNo, limitDate, limitTime);
+            if (success) {
+                log.info("🎉 실서버 취소표 예약 성공! PNR: {}, 결제기한: {} {}", pnrNo, limitDate, limitTime);
                 return KorailDto.ReservationResult.builder()
                         .success(true)
                         .reservationType("RESERVATION")
                         .pnrNo(pnrNo)
                         .limitDate(limitDate)
                         .limitTime(limitTime)
-                        .message("🎉 취소표 예약에 성공하였습니다! 마이페이지에서 결제 기한 내에 결제해 주세요. (PNR: " + pnrNo + ")")
+                        .message(msg)
                         .build();
             } else {
-                String msg = json.path("h_msg_txt").asText("코레일 실서버 좌석 예약 실패");
-                String code = json.path("h_msg_cd").asText("");
-                log.warn("코레일 실서버 좌석 예약 실패: [{}]{}", code, msg);
+                log.warn("코레일 실서버 취소표 예약 실패: {}", msg);
                 return KorailDto.ReservationResult.builder()
                         .success(false)
-                        .message("코레일 예약 실패: [" + code + "] " + msg)
+                        .message(msg)
                         .build();
             }
         } catch (Exception e) {
-            log.error("취소표 예약 중 오류: {}", e.getMessage(), e);
+            log.error("취소표 예약 중 오류 발생: {}", e.getMessage(), e);
             return KorailDto.ReservationResult.builder()
                     .success(false)
-                    .message("예약 요청 처리 중 오류가 발생했습니다: " + e.getMessage())
+                    .message("예약 요청 처리 중 오류: " + e.getMessage())
                     .build();
         }
     }
 
     /**
-     * 예매대기 신청 (TicketReservation JobId 1102 ➡️ ReservationWait)
+     * 예매대기 신청 (TicketReservation JobId 1102 ➡️ ReservationWait 2-Step 정규 파이프라인)
      */
     public KorailDto.ReservationResult reserveWaitlist(KorailDto.TrainSchedule train, String phoneNo) {
-        if (currentSession == null || !currentSession.isLoggedIn()) {
+        KorailDto.LoginSession session = getCurrentSession();
+        if (session == null || !session.isLoggedIn()) {
             return KorailDto.ReservationResult.builder()
                     .success(false)
-                    .message("로그인 세션이 없습니다. 먼저 코레일 로그인을 진행해 주세요.")
+                    .message("로그인 세션이 없습니다. 먼저 코레일 실서버 로그인을 진행해 주세요.")
                     .build();
         }
 
         try {
-            log.info("예매대기 신청(1102) 1단계 시도: 열차={}, 전화번호={}", train.getTrainNo(), phoneNo);
-
-            // 1단계: 1102 가신청으로 PNR 번호 발급
-            String ticketUrl = BASE_URL + ".certification.TicketReservation";
-            Map<String, String> step1Params = new LinkedHashMap<>();
-            step1Params.put("Device", DEVICE);
-            step1Params.put("Version", VERSION);
-            step1Params.put("Key", currentSession.getKey());
-            step1Params.put("txtJobId", "1102"); // 1102: 예약대기 접수
-            step1Params.put("txtTotPsgCnt", "1");
-            step1Params.put("txtSeatAttCd1", "000");
-            step1Params.put("txtSeatAttCd2", "000");
-            step1Params.put("txtSeatAttCd3", "000");
-            step1Params.put("txtSeatAttCd4", "015");
-            step1Params.put("txtSeatAttCd5", "000");
-            step1Params.put("hidFreeFlg", "N");
-            step1Params.put("txtStndFlg", "N");
-            step1Params.put("txtMenuId", "11");
-            step1Params.put("txtSrcarCnt", "0");
-            step1Params.put("txtJrnyCnt", "1");
-
-            step1Params.put("txtJrnySqno1", "001");
-            step1Params.put("txtJrnyTpCd1", "11");
-            step1Params.put("txtDptDt1", train.getDepartureDate());
-            step1Params.put("txtDptRsStnCd1", train.getDepartureStationCode());
-            step1Params.put("txtDptTm1", train.getDepartureTimeRaw());
-            step1Params.put("txtArvRsStnCd1", train.getArrivalStationCode());
-            step1Params.put("txtTrnNo1", train.getTrainNo());
-            step1Params.put("txtRunDt1", train.getRunDate());
-            step1Params.put("txtTrnClsfCd1", train.getTrainClassCode());
-            step1Params.put("txtPsrmClCd1", "1"); // 예매대기는 일반실 전용
-            step1Params.put("txtTrnGpCd1", train.getTrainGroupCode());
-
-            step1Params.put("txtPsgTpCd1", "1");
-            step1Params.put("txtDiscKndCd1", "000");
-            step1Params.put("txtCompaCnt1", "1");
-
-            String step1Response = postForm(ticketUrl, step1Params);
-            JsonNode step1Json = objectMapper.readTree(step1Response);
-
-            if (!"SUCC".equalsIgnoreCase(step1Json.path("strResult").asText())) {
-                String err = step1Json.path("h_msg_txt").asText("예매대기 1단계(PNR 발급) 실패");
-                String code = step1Json.path("h_msg_cd").asText("");
-                log.warn("예매대기 1단계 실패: [{}] {}", code, err);
-                return KorailDto.ReservationResult.builder()
-                        .success(false)
-                        .message("예매대기 접수 실패: [" + code + "] " + err)
-                        .build();
+            String targetPhone = (phoneNo != null && !phoneNo.isBlank()) ? phoneNo : session.getPhoneNo();
+            if (targetPhone == null || targetPhone.isBlank()) {
+                targetPhone = defaultPhoneNo;
             }
 
-            String pnrNo = step1Json.path("h_pnr_no").asText("");
-            if (pnrNo.isBlank()) {
-                pnrNo = step1Json.path("txtPnrNo").asText("");
-            }
+            log.info("예매대기 신청 실서버 시도: 열차={}, 전화번호={}", train.getTrainNo(), targetPhone);
+            String trainJson = objectMapper.writeValueAsString(train);
 
-            if (pnrNo.isBlank()) {
-                return KorailDto.ReservationResult.builder()
-                        .success(false)
-                        .message("코레일 실서버에서 PNR 접수번호를 발급하지 않았습니다.")
-                        .build();
-            }
+            String responseStr = runBridge("waitlist", trainJson, targetPhone);
+            JsonNode json = objectMapper.readTree(responseStr);
 
-            // 2단계: ReservationWait 정식 SMS 및 동의 등록
-            log.info("예매대기 2단계 ReservationWait 등록 시도 (PNR: {})", pnrNo);
-            String targetPhone = (phoneNo != null && !phoneNo.isBlank()) ? phoneNo : defaultPhoneNo;
-            if (targetPhone != null) targetPhone = targetPhone.replaceAll("[^0-9]", "");
+            boolean success = json.path("success").asBoolean(false);
+            String msg = json.path("message").asText("");
+            String pnrNo = json.path("pnrNo").asText("");
 
-            String waitUrl = WEB_URL + ".reservationWait.ReservationWait";
-            Map<String, String> step2Params = new LinkedHashMap<>();
-            step2Params.put("txtPnrNo", pnrNo);
-            step2Params.put("txtPsrmClChgFlg", "N");
-            step2Params.put("txtSmsSndFlg", "Y");
-            step2Params.put("txtCpNo", targetPhone != null ? targetPhone : "");
-            step2Params.put("Device", "BH");
-            step2Params.put("Version", "999999999");
-
-            String step2Response = postForm(waitUrl, step2Params);
-            JsonNode step2Json = objectMapper.readTree(step2Response);
-
-            if ("SUCC".equalsIgnoreCase(step2Json.path("strResult").asText())) {
-                String successMsg = step2Json.path("h_msg_txt").asText("정상적으로 예매대기가 신청되었습니다.");
-                log.info("🎉 예매대기 신청 최종 성공! PNR: {}, 메시지: {}", pnrNo, successMsg);
+            if (success) {
+                log.info("🎉 실서버 예매대기 신청 최종 성공! PNR: {}", pnrNo);
                 return KorailDto.ReservationResult.builder()
                         .success(true)
                         .reservationType("WAITLIST")
                         .pnrNo(pnrNo)
-                        .message("🎉 예매대기 등록이 완료되었습니다! (접수번호: " + pnrNo + ")")
+                        .message(msg)
                         .build();
             } else {
-                String err = step2Json.path("h_msg_txt").asText("예매대기 2단계(SMS 등록) 실패");
-                String code = step2Json.path("h_msg_cd").asText("");
-                log.warn("예매대기 2단계 실패: [{}] {}", code, err);
+                log.warn("코레일 실서버 예매대기 신청 실패: {}", msg);
                 return KorailDto.ReservationResult.builder()
                         .success(false)
-                        .message("예매대기 등록 실패: [" + code + "] " + err)
+                        .message(msg)
                         .build();
             }
         } catch (Exception e) {
-            log.error("예매대기 신청 중 예외 발생: {}", e.getMessage(), e);
+            log.error("예매대기 신청 중 오류: {}", e.getMessage(), e);
             return KorailDto.ReservationResult.builder()
                     .success(false)
-                    .message("예매대기 처리 중 오류가 발생했습니다: " + e.getMessage())
+                    .message("예매대기 처리 중 오류: " + e.getMessage())
                     .build();
         }
     }
@@ -518,59 +387,5 @@ public class KorailClient {
                 .trainGroupCode(node.path("h_trn_gp_cd").asText("100"))
                 .trainClassCode(node.path("h_trn_clsf_cd").asText("00"))
                 .build();
-    }
-
-    private String getUrl(String baseUrl, Map<String, String> queryParams) throws Exception {
-        StringBuilder urlBuilder = new StringBuilder(baseUrl);
-        if (!queryParams.isEmpty()) {
-            urlBuilder.append("?");
-            for (Map.Entry<String, String> entry : queryParams.entrySet()) {
-                urlBuilder.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
-                        .append("=")
-                        .append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8))
-                        .append("&");
-            }
-            urlBuilder.setLength(urlBuilder.length() - 1);
-        }
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(urlBuilder.toString()))
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/json, text/plain, */*")
-                .header("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8")
-                .header("Referer", "https://www.korail.com/")
-                .header("Origin", "https://www.korail.com")
-                .GET()
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        return response.body();
-    }
-
-    private String postForm(String url, Map<String, String> formData) throws Exception {
-        StringBuilder formBuilder = new StringBuilder();
-        for (Map.Entry<String, String> entry : formData.entrySet()) {
-            formBuilder.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
-                    .append("=")
-                    .append(URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8))
-                    .append("&");
-        }
-        if (!formData.isEmpty()) {
-            formBuilder.setLength(formBuilder.length() - 1);
-        }
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("User-Agent", USER_AGENT)
-                .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                .header("Accept", "application/json, text/plain, */*")
-                .header("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8")
-                .header("Referer", "https://www.korail.com/")
-                .header("Origin", "https://www.korail.com")
-                .POST(HttpRequest.BodyPublishers.ofString(formBuilder.toString(), StandardCharsets.UTF_8))
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        return response.body();
     }
 }

@@ -8,10 +8,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class KorailClientTest {
 
-    private final KorailCryptoService cryptoService = new KorailCryptoService();
     private final KorailStationRegistry stationRegistry = new KorailStationRegistry();
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final KorailClient korailClient = new KorailClient(cryptoService, stationRegistry, objectMapper);
+    private final KorailClient korailClient = new KorailClient(stationRegistry, objectMapper);
 
     @Test
     @DisplayName("1. 서울 -> 부산 (실서버 실시간 열차 조회)")

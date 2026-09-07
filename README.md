@@ -550,7 +550,7 @@ Frontend Error State
 
 * [ ] External API Client 계층 정리
 * [ ] Service 책임 분리
-* [ ] 공통 Error Response 정의
+* [x] 공통 Error Response 정의 및 GlobalExceptionHandler 구축
 * [ ] 외부 API 장애 처리 표준화
 * [ ] 비동기 작업 관리 개선
 * [ ] 금융 데이터 정밀도 개선
@@ -559,7 +559,7 @@ Frontend Error State
 ## Frontend
 
 * [ ] 대형 Dashboard Component 분리
-* [ ] API Client 모듈화
+* [x] API Client 모듈화 (apiClient.ts & /api/v1 표준 버저닝 일원화)
 * [ ] 서버 상태 관리 개선
 * [ ] Loading / Empty / Error 상태 표준화
 * [ ] WebSocket 재연결 처리 개선

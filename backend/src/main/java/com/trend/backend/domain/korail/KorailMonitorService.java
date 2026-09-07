@@ -145,6 +145,29 @@ public class KorailMonitorService {
                 }
             }
 
+            if (!searchRes.isSuccess()) {
+                String errMsg = searchRes.getMessage();
+                if (errMsg != null && (errMsg.contains("제한") || errMsg.contains("차단") || errMsg.contains("비정상") || errMsg.contains("초과"))) {
+                    log.error("🚨 [계정 및 IP 보호] 운영사 보안 알림 감지, 즉시 모니터링 안전 정지: {}", errMsg);
+                    context.running = false;
+                    activeTasks.remove(context.taskId);
+                    KorailDto.MonitorEvent safeStopEvent = KorailDto.MonitorEvent.builder()
+                            .taskId(context.taskId)
+                            .trainNo(context.request.getTrainNo())
+                            .trainType("KTX")
+                            .route(context.request.getDepartureStation() + " ➡️ " + context.request.getArrivalStation())
+                            .status("STOPPED_SAFE")
+                            .attempts(context.attempts)
+                            .lastResponseTimeMs(elapsed)
+                            .message("🚨 [안전 정지] 계정 보호를 위해 모니터링이 자동 중지되었습니다: " + errMsg)
+                            .timestamp(LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")))
+                            .build();
+                    context.lastEvent = safeStopEvent;
+                    broadcastEvent(safeStopEvent);
+                    return;
+                }
+            }
+
             if (targetTrain == null) {
                 log.warn("대상 열차를 찾을 수 없음: trnNo={}", context.request.getTrainNo());
                 updateAndBroadcast(context, "POLLING", elapsed, "열차 목록 수신 중 (대상 번호 탐색 대기)");
@@ -180,6 +203,13 @@ public class KorailMonitorService {
                     return;
                 } else {
                     log.warn("취소표 예약 경합 실패: {}. 모니터링 지속", res.getMessage());
+                    if (res.getMessage() != null && (res.getMessage().contains("제한") || res.getMessage().contains("차단") || res.getMessage().contains("비정상"))) {
+                        log.error("🚨 [계정 보호] 예약 중 운영사 제한 감지, 즉시 안전 정지: {}", res.getMessage());
+                        context.running = false;
+                        activeTasks.remove(context.taskId);
+                        updateAndBroadcast(context, "STOPPED_SAFE", elapsed, "🚨 [안전 정지] " + res.getMessage());
+                        return;
+                    }
                 }
             }
 
@@ -208,6 +238,13 @@ public class KorailMonitorService {
                     return;
                 } else {
                     log.warn("예매대기 등록 경합 실패: {}. 모니터링 지속", waitRes.getMessage());
+                    if (waitRes.getMessage() != null && (waitRes.getMessage().contains("제한") || waitRes.getMessage().contains("차단") || waitRes.getMessage().contains("비정상"))) {
+                        log.error("🚨 [계정 보호] 예매대기 중 운영사 제한 감지, 즉시 안전 정지: {}", waitRes.getMessage());
+                        context.running = false;
+                        activeTasks.remove(context.taskId);
+                        updateAndBroadcast(context, "STOPPED_SAFE", elapsed, "🚨 [안전 정지] " + waitRes.getMessage());
+                        return;
+                    }
                 }
             }
 

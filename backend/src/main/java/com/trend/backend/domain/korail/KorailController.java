@@ -13,7 +13,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/korail")
+@RequestMapping({"/api/v1/korail", "/api/korail"})
 @RequiredArgsConstructor
 public class KorailController {
 

@@ -1,6 +1,9 @@
 # Security & Secrets
 application-secret.yml
 **/application-secret.yml
+korail_session.json
+**/korail_session.json
+*.session.json
 .env
 .env.*
 !.env.example

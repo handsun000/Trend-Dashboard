@@ -202,7 +202,7 @@ export default function TrainMonitorPage() {
 
   const fetchSession = async () => {
     try {
-      const res = await axios.get('/api/korail/session');
+      const res = await axios.get('/api/v1/korail/session');
       setSession(res.data);
     } catch {
       // ignore
@@ -211,7 +211,7 @@ export default function TrainMonitorPage() {
 
   const fetchMonitorStatus = async () => {
     try {
-      const res = await axios.get('/api/korail/monitor/status');
+      const res = await axios.get('/api/v1/korail/monitor/status');
       if (res.data && res.data.status && res.data.status !== 'IDLE' && res.data.status !== 'STOPPED') {
         setActiveMonitor(res.data);
       }
@@ -232,7 +232,7 @@ export default function TrainMonitorPage() {
 
     setIsLoggingIn(true);
     try {
-      const res = await axios.post('/api/korail/login', {
+      const res = await axios.post('/api/v1/korail/login', {
         memberNo: reqMemberNo,
         password: reqPassword,
       });
@@ -256,7 +256,7 @@ export default function TrainMonitorPage() {
   const handleSearch = async () => {
     setIsSearching(true);
     try {
-      const res = await axios.get('/api/korail/search', {
+      const res = await axios.get('/api/v1/korail/search', {
         params: {
           departureStation,
           arrivalStation,
@@ -288,27 +288,33 @@ export default function TrainMonitorPage() {
     }
   }, [departureStation, arrivalStation, searchDate, searchHour]);
 
-  const handleStartMonitor = async (train: TrainSchedule) => {
+  const handleStartMonitor = async (train: TrainSchedule, modeOverride?: 'AUTO_ALL' | 'RESERVE_ONLY' | 'WAIT_ONLY') => {
     if (!session.loggedIn) {
       toast.warn('자동 사냥 및 예매를 위해 먼저 코레일 계정을 연결(로그인)해 주세요.');
       setIsLoginModalOpen(true);
       return;
     }
 
+    const targetMode = modeOverride || bookingMode;
+    if (modeOverride) {
+      setBookingMode(modeOverride);
+    }
+
     try {
-      const res = await axios.post('/api/korail/monitor/start', {
+      const res = await axios.post('/api/v1/korail/monitor/start', {
         trainNo: train.trainNo,
         departureStation: train.departureStation,
         arrivalStation: train.arrivalStation,
         date: train.departureDate,
         hour: train.departureTimeRaw,
         phoneNo: phoneNo,
-        bookingMode: bookingMode,
+        bookingMode: targetMode,
       });
 
       setActiveMonitor(res.data);
       playSound('beep');
-      toast.success(`🚀 [${train.trainType} ${train.trainNo}호] 스텔스 자동 사냥이 시작되었습니다!`);
+      const modeLabel = targetMode === 'WAIT_ONLY' ? '대기 집중 모드' : targetMode === 'RESERVE_ONLY' ? '취소표 즉시예약 전용' : '스텔스 통합 사냥';
+      toast.success(`🚀 [${train.trainType} ${train.trainNo}호] ${modeLabel}가 시작되었습니다!`);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
       toast.error(`모니터링 시작 오류: ${errorMessage}`);
@@ -317,7 +323,7 @@ export default function TrainMonitorPage() {
 
   const handleStopMonitor = async () => {
     try {
-      await axios.post('/api/korail/monitor/stop');
+      await axios.post('/api/v1/korail/monitor/stop');
       setActiveMonitor(null);
       toast.info('모니터링이 중지되었습니다.');
     } catch (err: unknown) {
@@ -334,7 +340,7 @@ export default function TrainMonitorPage() {
     }
 
     try {
-      const res = await axios.post(`/api/korail/reserve?seatType=${seatType}`, train);
+      const res = await axios.post(`/api/v1/korail/reserve?seatType=${seatType}`, train);
       if (res.data && res.data.success) {
         playSound('success');
         toast.success(res.data.message);
@@ -355,7 +361,7 @@ export default function TrainMonitorPage() {
     }
 
     try {
-      const res = await axios.post(`/api/korail/reserve-wait?phoneNo=${phoneNo}`, train);
+      const res = await axios.post(`/api/v1/korail/reserve-wait?phoneNo=${phoneNo}`, train);
       if (res.data && res.data.success) {
         playSound('success');
         toast.success(res.data.message);
@@ -819,7 +825,7 @@ export default function TrainMonitorPage() {
                     </div>
 
                     {/* 액션: 자동 사냥 시작/중지 */}
-                    <div className="w-36 shrink-0 text-right">
+                    <div className="w-40 shrink-0 flex flex-col gap-1 text-right">
                       {isTarget ? (
                         <button
                           onClick={handleStopMonitor}
@@ -829,13 +835,24 @@ export default function TrainMonitorPage() {
                           <span>사냥 중지</span>
                         </button>
                       ) : (
-                        <button
-                          onClick={() => handleStartMonitor(train)}
-                          className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:brightness-110 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
-                        >
-                          <Zap className="w-3.5 h-3.5 fill-current" />
-                          <span>자동 사냥 시작</span>
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleStartMonitor(train)}
+                            className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:brightness-110 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+                          >
+                            <Zap className="w-3.5 h-3.5 fill-current" />
+                            <span>자동 사냥 시작</span>
+                          </button>
+                          {!train.generalAvailable && !train.specialAvailable && (
+                            <button
+                              onClick={() => handleStartMonitor(train, 'WAIT_ONLY')}
+                              className="w-full py-1 px-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-all active:scale-95"
+                              title="좌석 매진 시 예매대기(SMS 알림) 슬롯이 오픈되는 즉시 접수"
+                            >
+                              <span>⏳ 대기만 사냥</span>
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

@@ -28,6 +28,7 @@ public class KorailDto {
         private String customerNo;
         private String key;
         private String cookies;
+        private String phoneNo;
         private String message;
     }
 
