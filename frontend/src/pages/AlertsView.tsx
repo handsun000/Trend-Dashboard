@@ -3,6 +3,7 @@ import { ShieldCheck, BellPlus, Trash2, BellRing, Play, CheckCircle2 } from 'luc
 import UserAlertModal from '@/components/UserAlertModal';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { LoadingState, EmptyState, ErrorState } from '@/components/common';
 
 interface UserAlert {
   id: number;
@@ -14,15 +15,22 @@ interface UserAlert {
 
 export default function AlertsView() {
   const [alerts, setAlerts] = useState<UserAlert[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<any | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
 
   const fetchAlerts = async () => {
+    setIsLoading(true);
+    setError(null);
     try {
       const res = await axios.get('/api/v1/alerts?userId=user1');
       setAlerts(res.data);
     } catch (err) {
       console.error('Failed to fetch alerts', err);
+      setError(err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -92,11 +100,33 @@ export default function AlertsView() {
 
       {/* Main Alert Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {alerts.length === 0 ? (
-          <div className="col-span-full bg-white/[0.02] border border-white/5 rounded-2xl p-12 text-center text-slate-400">
-            <BellRing className="w-8 h-8 text-slate-600 mx-auto mb-2 animate-bounce" />
-            <p className="text-sm font-bold text-slate-300">등록된 목표가 알림이 없습니다.</p>
-            <p className="text-xs text-slate-500 mt-1">상단의 '새 알림 등록' 버튼을 눌러 관심 종목의 목표가를 설정해 보세요.</p>
+        {isLoading ? (
+          <div className="col-span-full">
+            <LoadingState
+              variant="skeleton-cards"
+              title="목표가 알림 목록 로딩 중..."
+              count={3}
+            />
+          </div>
+        ) : error ? (
+          <div className="col-span-full">
+            <ErrorState
+              title="목표가 알림 조회 실패"
+              message="알림 서버와 통신 중 오류가 발생했습니다."
+              details={error}
+              onRetry={fetchAlerts}
+            />
+          </div>
+        ) : alerts.length === 0 ? (
+          <div className="col-span-full">
+            <EmptyState
+              icon={BellRing}
+              title="등록된 목표가 알림이 없습니다."
+              description="관심 종목의 목표가를 설정해 두면 1초 주기 실시간 틱 엔진이 도달 즉시 텔레그램/브라우저 알림을 전송합니다."
+              actionLabel="새 목표가 알림 등록"
+              actionIcon={BellPlus}
+              onAction={() => setIsModalOpen(true)}
+            />
           </div>
         ) : (
           alerts.map((alert) => (

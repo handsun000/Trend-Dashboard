@@ -12,6 +12,7 @@ import MarketNewsPanel from '@/components/trading/MarketNewsPanel';
 import MarketHeatmap from '@/components/trading/MarketHeatmap';
 import DashboardSummaryRibbon from '@/components/trading/dashboard/DashboardSummaryRibbon';
 import ActiveAlertsBar from '@/components/trading/dashboard/ActiveAlertsBar';
+import { ErrorBoundary } from '@/components/common';
 
 /**
  * [World-Class Single-Pane Trading Dashboard]
@@ -147,58 +148,66 @@ export default function Dashboard() {
         
         {/* TAB 1: STOCK VIEW */}
         <TabsContent value="stock" className="flex-1 min-h-0 overflow-hidden m-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5 flex-1 min-h-0 h-full overflow-hidden">
-            <TradingChart
-              data={stockData}
-              name={selectedStock.name}
-              ticker={selectedStock.ticker}
-              market={selectedStock.market}
-              currentPrice={currentStockPrice}
-              quote={stockQuote}
-              themeColor="emerald"
-            />
-            <OrderBookWidget
-              currentPrice={currentStockPrice}
-              step={stockStep}
-              ticker={selectedStock.ticker}
-              themeColor="emerald"
-            />
-          </div>
+          <ErrorBoundary resetKey={selectedStock.ticker}>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5 flex-1 min-h-0 h-full overflow-hidden">
+              <TradingChart
+                data={stockData}
+                name={selectedStock.name}
+                ticker={selectedStock.ticker}
+                market={selectedStock.market}
+                currentPrice={currentStockPrice}
+                quote={stockQuote}
+                themeColor="emerald"
+              />
+              <OrderBookWidget
+                currentPrice={currentStockPrice}
+                step={stockStep}
+                ticker={selectedStock.ticker}
+                themeColor="emerald"
+              />
+            </div>
+          </ErrorBoundary>
         </TabsContent>
 
         {/* TAB 2: CRYPTO VIEW */}
         <TabsContent value="crypto" className="flex-1 min-h-0 overflow-hidden m-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5 flex-1 min-h-0 h-full overflow-hidden">
-            <TradingChart
-              data={cryptoData}
-              name={selectedCrypto.name}
-              ticker={selectedCrypto.ticker}
-              market="UPBIT"
-              currentPrice={currentCryptoPrice}
-              quote={cryptoQuote}
-              themeColor="cyan"
-              isCrypto={true}
-            />
-            <OrderBookWidget
-              currentPrice={currentCryptoPrice}
-              step={cryptoStep}
-              ticker={selectedCrypto.ticker}
-              themeColor="cyan"
-            />
-          </div>
+          <ErrorBoundary resetKey={selectedCrypto.ticker}>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5 flex-1 min-h-0 h-full overflow-hidden">
+              <TradingChart
+                data={cryptoData}
+                name={selectedCrypto.name}
+                ticker={selectedCrypto.ticker}
+                market="UPBIT"
+                currentPrice={currentCryptoPrice}
+                quote={cryptoQuote}
+                themeColor="cyan"
+                isCrypto={true}
+              />
+              <OrderBookWidget
+                currentPrice={currentCryptoPrice}
+                step={cryptoStep}
+                ticker={selectedCrypto.ticker}
+                themeColor="cyan"
+              />
+            </div>
+          </ErrorBoundary>
         </TabsContent>
 
         {/* TAB 3: LIVE MARKET NEWS & GEMINI AI TAB */}
         <TabsContent value="news" className="flex-1 min-h-0 overflow-hidden m-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <MarketNewsPanel
-            ticker={selectedStock.ticker}
-            name={selectedStock.name}
-          />
+          <ErrorBoundary resetKey={selectedStock.ticker}>
+            <MarketNewsPanel
+              ticker={selectedStock.ticker}
+              name={selectedStock.name}
+            />
+          </ErrorBoundary>
         </TabsContent>
 
         {/* TAB 4: FINVIZ SECTOR HEATMAP */}
         <TabsContent value="heatmap" className="flex-1 min-h-0 overflow-hidden m-0 data-[state=active]:flex data-[state=active]:flex-col">
-          <MarketHeatmap onSelectEntity={handleSelectEntity} />
+          <ErrorBoundary>
+            <MarketHeatmap onSelectEntity={handleSelectEntity} />
+          </ErrorBoundary>
         </TabsContent>
 
       </Tabs>

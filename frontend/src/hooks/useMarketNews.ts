@@ -32,10 +32,12 @@ export interface NewsResponse {
 export function useMarketNews(ticker: string, name?: string) {
   const [newsData, setNewsData] = useState<NewsResponse | null>(null);
   const [newsLoading, setNewsLoading] = useState(false);
+  const [newsError, setNewsError] = useState<any | null>(null);
 
   const fetchNews = async (targetTicker: string, targetName?: string) => {
     if (!targetTicker) return;
     setNewsLoading(true);
+    setNewsError(null);
     try {
       const res = await axios.get<NewsResponse>(
         `/api/v1/news?ticker=${targetTicker}${targetName ? `&name=${encodeURIComponent(targetName)}` : ''}`
@@ -43,6 +45,7 @@ export function useMarketNews(ticker: string, name?: string) {
       setNewsData(res.data);
     } catch (e) {
       console.error('Failed to fetch market news & AI insight:', e);
+      setNewsError(e);
     } finally {
       setNewsLoading(false);
     }
@@ -57,6 +60,7 @@ export function useMarketNews(ticker: string, name?: string) {
   return {
     newsData,
     newsLoading,
+    newsError,
     refetchNews: () => fetchNews(ticker, name),
   };
 }

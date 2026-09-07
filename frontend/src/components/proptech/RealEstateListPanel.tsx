@@ -16,6 +16,7 @@ import {
 import axios from 'axios';
 import type { RealEstateTx } from '@/hooks/usePublicData';
 import type { RegionInfo, SidoHierarchy } from '@/components/RegionSelectorModal';
+import { LoadingState, EmptyState } from '@/components/common';
 
 interface RealEstateListPanelProps {
   transactions: RealEstateTx[];
@@ -64,7 +65,7 @@ export default function RealEstateListPanel({
   selectedPropertyType,
   setSelectedPropertyType,
   selectedLawdCd,
-  selectedRegionLabel: _selectedRegionLabel,
+  selectedRegionLabel,
   onSelectRegion,
   onOpenRegionModal,
   currentPage,
@@ -299,15 +300,21 @@ export default function RealEstateListPanel({
       {/* TIER 3: Transaction Card Feed */}
       <div className="flex-1 min-h-0 overflow-y-auto space-y-2 py-2 pr-1 scrollbar-thin">
         {txLoading ? (
-          <div className="flex flex-col items-center justify-center p-12 text-slate-400 gap-3">
-            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs font-bold text-slate-300">국토교통부 실시간 실거래가 수집 중...</p>
-          </div>
+          <LoadingState
+            variant="skeleton-cards"
+            title="국토교통부 실시간 실거래가 수집 중..."
+            description={`${selectedRegionLabel} 지역의 최신 실거래 데이터를 파싱하고 있습니다.`}
+            count={4}
+          />
         ) : transactions.length === 0 ? (
-          <div className="p-8 text-center bg-white/[0.02] border border-white/5 rounded-2xl text-slate-400">
-            <Building2 className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-            <p className="text-xs font-bold text-slate-300">조건에 일치하는 실거래 내역이 없습니다.</p>
-          </div>
+          <EmptyState
+            icon={Building2}
+            title="조건에 일치하는 실거래 내역이 없습니다."
+            description="다른 시군구나 매물 유형(아파트/오피스텔/빌라), 거래 유형(매매/전세/월세)을 선택해 보세요."
+            actionLabel="전국 250개 시군구 지도탐색"
+            onAction={onOpenRegionModal}
+            height="220px"
+          />
         ) : (
           transactions.map((tx, idx) => {
             const key = `${tx.complexName}_${tx.tradeDate}_${idx}`;
