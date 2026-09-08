@@ -1,52 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ShieldCheck, BellPlus, Trash2, BellRing, Play, CheckCircle2 } from 'lucide-react';
 import UserAlertModal from '@/components/UserAlertModal';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { LoadingState, EmptyState, ErrorState } from '@/components/common';
-
-interface UserAlert {
-  id: number;
-  userId: string;
-  ticker: string;
-  targetPrice: number;
-  isActive: boolean;
-}
+import { useAlerts } from '@/hooks/useAlerts';
 
 export default function AlertsView() {
-  const [alerts, setAlerts] = useState<UserAlert[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<any | null>(null);
+  const { alerts, isLoading, error, refetchAlerts, deleteAlert } = useAlerts('user1');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBatchRunning, setIsBatchRunning] = useState(false);
 
-  const fetchAlerts = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await axios.get('/api/v1/alerts?userId=user1');
-      setAlerts(res.data);
-    } catch (err) {
-      console.error('Failed to fetch alerts', err);
-      setError(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAlerts();
-  }, []);
-
-  const handleDeleteAlert = async (id: number) => {
-    try {
-      await axios.delete(`/api/v1/alerts/${id}`);
-      toast.info('알림 감시 규칙이 삭제되었습니다.', { theme: 'dark' });
-      fetchAlerts();
-    } catch (err) {
-      console.error(err);
-      toast.error('알림 삭제 실패', { theme: 'dark' });
-    }
+  const handleDeleteAlert = (id: number) => {
+    deleteAlert(id);
   };
 
   const handleRunBatch = async () => {
@@ -114,7 +80,7 @@ export default function AlertsView() {
               title="목표가 알림 조회 실패"
               message="알림 서버와 통신 중 오류가 발생했습니다."
               details={error}
-              onRetry={fetchAlerts}
+              onRetry={refetchAlerts}
             />
           </div>
         ) : alerts.length === 0 ? (
@@ -173,7 +139,7 @@ export default function AlertsView() {
       <UserAlertModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        onAlertCreated={fetchAlerts}
+        onAlertCreated={refetchAlerts}
         defaultTicker="005930"
       />
     </div>

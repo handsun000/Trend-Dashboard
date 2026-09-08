@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { toast } from 'react-toastify';
 
 export interface SummaryData {
   bokRate: number;
@@ -58,153 +58,133 @@ export interface RealEstateTx {
   pyeong?: number;
   floor: string;
   buildYear: number;
-  propertyType: string;       // "APT", "OFFI", "VILLA"
-  propertyTypeLabel: string;  // "아파트 🏢", "오피스텔 🏬", "빌라/다세대 🏡"
-  dealCategory: string;       // "TRADE", "JEONSE", "RENT"
-  tradePrice: number;         // 억 단위
-  tradePriceWon: string;      // "32억 7,000만원" or "보증금 1억원 / 월 280만원"
-  formattedPrice?: string;
-  deposit?: number;
+  tradeDate: string;
+  dealYear: number;
+  dealMonth: number;
+  dealDay: number;
+  tradePriceWon: string;
+  pricePerPyeong: string;
+  exclusiveArea: number;
+  pricePerExclusiveArea: number;
+  tradePrice?: number;
+  propertyType?: string;
+  propertyTypeLabel?: string;
+  dealCategory?: string;
+  tradeType?: string;
   monthlyRent?: number;
-  tradeDate: string;          // "2024.08.24"
-  tradeType: string;          // 매매 / 전세 / 월세
-  status: string;             // 초고가/신고가, 우상향, 전세, 월세 등
-  isLive?: boolean;           // 100% 국토교통부 실시간 OpenAPI 수신 여부
-
-  // 동적 연동 필드
-  direction?: string;
-  parkingPerHousehold?: number;
-  elevatorCount?: number;
-  subwayInfo?: string;
-  walkTimeToSubway?: number;
-  buildingStructure?: string;
-  safetyRating?: string;           // "SAFE", "CAUTION", "DANGER"
-  seniorMortgageWon?: number;
-  jeonseRatio?: number;
-  isHugEligible?: boolean;
-  safetyAnalysisReport?: string;
-  districtAvgPrice?: number;
-  districtMinPrice?: number;
-  districtMaxPrice?: number;
-  pricePercentile?: number;
-  maintenanceFee?: number;
+  status?: string;
+  buyerGubun?: string;
+  sellerGubun?: string;
+  roadName?: string;
+  bonbun?: string;
+  bubun?: string;
+  formattedPrice?: string;
+  [key: string]: any;
 }
 
 export interface WeatherPoint {
-  date: string;
+  time: string;
   temperature: number;
-  minTemperature: number;
-  maxTemperature: number;
+  humidity: number;
   rainfall: number;
-  hotDays: number;
-  rainyDays: number;
-  deliveryIndex: number;
-  fnbIndex: number;
-  fashionIndex: number;
 }
 
 export function usePublicData() {
-  const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [currentWeather, setCurrentWeather] = useState<CurrentWeather | null>(null);
-  const [weatherSeries, setWeatherSeries] = useState<WeatherPoint[]>([]);
-  const [transactions, setTransactions] = useState<RealEstateTx[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [txLoading, setTxLoading] = useState(false);
-
   // Region & Filter State
   const [selectedLawdCd, setSelectedLawdCd] = useState<string>('11680');
   const [selectedRegionLabel, setSelectedRegionLabel] = useState<string>('서울 강남구');
   const [selectedTradeType, setSelectedTradeType] = useState<string>('ALL');
   const [selectedPropertyType, setSelectedPropertyType] = useState<string>('ALL');
-
-  // Pagination State
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalPages, setTotalPages] = useState<number>(5);
-  const [totalElements, setTotalElements] = useState<number>(0);
 
-  const loadSummary = useCallback(async () => {
-    try {
+  // 1. 거시경제 & 부동산 지표 요약 (10분 캐시)
+  const {
+    data: summary = null,
+    isLoading: isSummaryLoading,
+    refetch: refetchSummary,
+  } = useQuery<SummaryData | null>({
+    queryKey: ['public-data-summary'],
+    queryFn: async () => {
       const res = await axios.get<SummaryData>('/api/v1/public-data/summary');
-      setSummary(res.data);
-    } catch (e) {
-      console.error('Failed to load public data summary:', e);
-    }
-  }, []);
+      return res.data;
+    },
+    staleTime: 1000 * 60 * 10,
+  });
 
-  const loadWeather = useCallback(async (lawdCd: string, regionName: string) => {
-    try {
+  // 2. 실시간 날씨 및 시계열 (5분 캐시)
+  const {
+    data: weatherData = null,
+    isLoading: isWeatherLoading,
+    refetch: refetchWeather,
+  } = useQuery<{ current: CurrentWeather | null; series: WeatherPoint[] }>({
+    queryKey: ['public-data-weather', selectedLawdCd, selectedRegionLabel],
+    queryFn: async () => {
       const [curRes, seriesRes] = await Promise.all([
         axios.get<CurrentWeather>('/api/v1/public-data/weather/current', {
-          params: { lawdCd, regionName }
+          params: { lawdCd: selectedLawdCd, regionName: selectedRegionLabel },
         }),
         axios.get<WeatherPoint[]>('/api/v1/public-data/weather/series', {
-          params: { lawdCd }
-        })
+          params: { lawdCd: selectedLawdCd },
+        }),
       ]);
-      setCurrentWeather(curRes.data);
-      setWeatherSeries(seriesRes.data);
-    } catch (e) {
-      console.error('Failed to load live weather data:', e);
-    }
-  }, []);
+      return { current: curRes.data, series: seriesRes.data };
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
-  const loadTransactions = useCallback(async (
-    district: string,
-    tradeType: string = 'ALL',
-    propType: string = 'ALL',
-    page: number = 1
-  ) => {
-    setTxLoading(true);
-    try {
+  // 3. 국토교통부 실시간 실거래가 (지역/거래유형/페이지별 5분 스마트 캐시)
+  const {
+    data: txResponse = null,
+    isLoading: isTxQueryLoading,
+    isFetching: isTxFetching,
+    refetch: refetchTx,
+  } = useQuery<{
+    content: RealEstateTx[];
+    totalPages: number;
+    totalElements: number;
+    currentPage: number;
+  }>({
+    queryKey: ['public-data-real-estate', selectedLawdCd, selectedTradeType, selectedPropertyType, currentPage],
+    queryFn: async () => {
       const res = await axios.get('/api/v1/public-data/real-estate/transactions', {
         params: {
-          district,
-          lawdCd: district,
-          tradeType,
-          propertyType: propType,
-          page,
-          size: 20
-        }
+          district: selectedLawdCd,
+          lawdCd: selectedLawdCd,
+          tradeType: selectedTradeType,
+          propertyType: selectedPropertyType,
+          page: currentPage,
+          size: 20,
+        },
       });
-
       const data = res.data;
       if (data && Array.isArray(data.content)) {
-        setTransactions(data.content);
-        setTotalPages(data.totalPages || 1);
-        setTotalElements(data.totalElements || data.content.length);
-        setCurrentPage(data.currentPage || page);
+        return {
+          content: data.content,
+          totalPages: data.totalPages || 1,
+          totalElements: data.totalElements || data.content.length,
+          currentPage: data.currentPage || currentPage,
+        };
       } else if (Array.isArray(data)) {
-        setTransactions(data);
-        setTotalPages(Math.ceil(data.length / 20) || 1);
-        setTotalElements(data.length);
-        setCurrentPage(page);
+        return {
+          content: data,
+          totalPages: Math.ceil(data.length / 20) || 1,
+          totalElements: data.length,
+          currentPage,
+        };
       }
-    } catch (e) {
-      console.error('Failed to load real estate transactions:', e);
-      toast.error('실거래가 데이터를 불러오는데 실패했습니다.', { theme: 'dark' });
-    } finally {
-      setTxLoading(false);
-    }
-  }, []);
+      return { content: [], totalPages: 1, totalElements: 0, currentPage: 1 };
+    },
+    staleTime: 1000 * 60 * 5, // 5분 캐싱: 지역 전환 후 복귀 시 0ms 즉시 표시
+  });
 
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await Promise.all([
-        loadSummary(),
-        loadWeather(selectedLawdCd, selectedRegionLabel),
-        loadTransactions(selectedLawdCd, selectedTradeType, selectedPropertyType, 1)
-      ]);
-      setLoading(false);
-    };
-    init();
-  }, [loadSummary, loadWeather, loadTransactions, selectedLawdCd, selectedRegionLabel, selectedTradeType, selectedPropertyType]);
+  const loading = isSummaryLoading || isWeatherLoading;
+  const txLoading = isTxQueryLoading || isTxFetching;
 
   return {
     summary,
-    currentWeather,
-    weatherSeries,
-    transactions,
+    currentWeather: weatherData?.current ?? null,
+    weatherSeries: weatherData?.series ?? [],
+    transactions: txResponse?.content ?? [],
     loading,
     txLoading,
     selectedLawdCd,
@@ -217,10 +197,16 @@ export function usePublicData() {
     setSelectedPropertyType,
     currentPage,
     setCurrentPage,
-    totalPages,
-    totalElements,
-    loadSummary,
-    loadWeather,
-    loadTransactions,
+    totalPages: txResponse?.totalPages ?? 1,
+    totalElements: txResponse?.totalElements ?? 0,
+    loadSummary: () => refetchSummary(),
+    loadWeather: () => refetchWeather(),
+    loadTransactions: (district?: string, tradeType?: string, propType?: string, page?: number) => {
+      if (district) setSelectedLawdCd(district);
+      if (tradeType) setSelectedTradeType(tradeType);
+      if (propType) setSelectedPropertyType(propType);
+      if (page) setCurrentPage(page);
+      return refetchTx();
+    },
   };
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
 export interface NewsItem {
@@ -30,37 +30,27 @@ export interface NewsResponse {
 }
 
 export function useMarketNews(ticker: string, name?: string) {
-  const [newsData, setNewsData] = useState<NewsResponse | null>(null);
-  const [newsLoading, setNewsLoading] = useState(false);
-  const [newsError, setNewsError] = useState<any | null>(null);
-
-  const fetchNews = async (targetTicker: string, targetName?: string) => {
-    if (!targetTicker) return;
-    setNewsLoading(true);
-    setNewsError(null);
-    try {
+  const {
+    data: newsData = null,
+    isLoading: newsLoading,
+    error: newsError,
+    refetch,
+  } = useQuery<NewsResponse>({
+    queryKey: ['market-news', ticker, name],
+    queryFn: async () => {
       const res = await axios.get<NewsResponse>(
-        `/api/v1/news?ticker=${targetTicker}${targetName ? `&name=${encodeURIComponent(targetName)}` : ''}`
+        `/api/v1/news?ticker=${ticker}${name ? `&name=${encodeURIComponent(name)}` : ''}`
       );
-      setNewsData(res.data);
-    } catch (e) {
-      console.error('Failed to fetch market news & AI insight:', e);
-      setNewsError(e);
-    } finally {
-      setNewsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (ticker) {
-      fetchNews(ticker, name);
-    }
-  }, [ticker, name]);
+      return res.data;
+    },
+    enabled: Boolean(ticker),
+    staleTime: 1000 * 60 * 5, // 5분 캐싱: 탭 이동 후 복귀 시 0ms 즉시 렌더링
+  });
 
   return {
     newsData,
     newsLoading,
     newsError,
-    refetchNews: () => fetchNews(ticker, name),
+    refetchNews: () => refetch(),
   };
 }

@@ -20,7 +20,7 @@ export interface RealEstateDetailProps {
     propertyType?: string;      // APT, OFFI, VILLA
     propertyTypeLabel?: string; // 아파트 🏢, 오피스텔 🏬, 빌라/다세대 🏡
     dealCategory?: string;      // TRADE, JEONSE, RENT
-    tradePrice: number;         // 억원
+    tradePrice?: number;         // 억원
     tradePriceWon: string;
     formattedPrice?: string;    // 매매 32억 / 전세 18억 / 보증금 5억, 월 250만
     deposit?: number;
@@ -29,8 +29,8 @@ export interface RealEstateDetailProps {
     changeFormatted?: string;
     changeRate?: number;
     tradeDate: string;
-    tradeType: string;          // 매매 / 전세 / 월세
-    status: string;             // 초고가/신고가, 우상향, 전세, 월세 등
+    tradeType?: string;          // 매매 / 전세 / 월세
+    status?: string;             // 초고가/신고가, 우상향, 전세, 월세 등
 
     // 100% 동적 연동 필드 (백엔드 스마트 파생 엔진 & 시세 통계 연동)
     direction?: string;
@@ -86,7 +86,7 @@ export default function PropertyDetailBentoModal({ tx, onClose }: RealEstateDeta
   const areaM2Value = tx.areaM2 || (tx.area ? parseFloat(tx.area) : 84.9);
 
   // 3. 지역 평균 대비 가격 인포그래픽 게이지 (백엔드 실시간 통계 백분위수 pricePercentile 연동)
-  const priceGaugePercent = tx.pricePercentile ?? Math.min(100, Math.max(15, Math.round((tx.tradePrice / 40) * 100)));
+  const priceGaugePercent = tx.pricePercentile ?? Math.min(100, Math.max(15, Math.round(((tx.tradePrice || 25) / 40) * 100)));
   const isAffordable = priceGaugePercent < 40;
   const isPremium = priceGaugePercent >= 75;
 

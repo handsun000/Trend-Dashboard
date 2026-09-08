@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, BellPlus, CheckCircle2 } from 'lucide-react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Props {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function UserAlertModal({ isOpen, onClose, onAlertCreated, defaultTicker = '005930' }: Props) {
+  const queryClient = useQueryClient();
   const [ticker, setTicker] = useState(defaultTicker);
   const [targetPrice, setTargetPrice] = useState<number | ''>(defaultTicker === '000660' ? 1700000 : defaultTicker === 'KRW-BTC' ? 95000000 : 280000);
   const [submitting, setSubmitting] = useState(false);
@@ -47,6 +49,7 @@ export default function UserAlertModal({ isOpen, onClose, onAlertCreated, defaul
         theme: 'dark',
         className: 'border border-white/10 bg-slate-900/90 text-slate-100 rounded-2xl shadow-2xl backdrop-blur-xl font-medium',
       });
+      queryClient.invalidateQueries({ queryKey: ['alerts'] });
       onAlertCreated();
       onClose();
     } catch (err) {

@@ -560,7 +560,7 @@ Frontend Error State
 
 * [x] 대형 Dashboard Component 분리 (Dashboard.tsx 및 TrainMonitorPage.tsx 서브모듈화 완료)
 * [x] API Client 모듈화 (apiClient.ts & /api/v1 표준 버저닝 일원화)
-* [ ] 서버 상태 관리 개선
+* [x] 서버 상태 관리 개선 (TanStack Query v5 도입, 뉴스/알림/부동산 스마트 캐싱 및 자동 무효화)
 * [x] Loading / Empty / Error 상태 표준화 (LoadingState, EmptyState, ErrorState, ErrorBoundary, StatusContainer)
 * [ ] WebSocket 재연결 처리 개선
 

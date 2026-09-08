@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import { useAlerts } from './useAlerts';
 
 export interface UserAlert {
   id: number;
@@ -34,7 +35,7 @@ export interface MarketQuote {
 
 export function useTradingDashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [alerts, setAlerts] = useState<UserAlert[]>([]);
+  const { alerts, refetchAlerts: fetchAlerts } = useAlerts('user1');
   
   // Active selected entities
   const [selectedStock, setSelectedStock] = useState({ ticker: '005930', name: '삼성전자', market: 'KOSPI' });
@@ -67,15 +68,6 @@ export function useTradingDashboard() {
   useEffect(() => {
     selectedCryptoRef.current = selectedCrypto;
   }, [selectedCrypto]);
-
-  const fetchAlerts = async () => {
-    try {
-      const res = await axios.get('/api/v1/alerts?userId=user1');
-      setAlerts(res.data);
-    } catch (err) {
-      console.error('Failed to fetch alerts:', err);
-    }
-  };
 
   const loadStockQuote = async (ticker: string, name?: string) => {
     try {
@@ -222,7 +214,6 @@ export function useTradingDashboard() {
     isModalOpen,
     setIsModalOpen,
     alerts,
-    setAlerts,
     fetchAlerts,
     selectedStock,
     setSelectedStock,
