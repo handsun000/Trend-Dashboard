@@ -23,6 +23,7 @@ export interface ApiResponse<T = unknown> {
  * - 외부 API 타임아웃 및 네트워크 장애 시 투명한 에러 핸들링
  */
 export const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',

@@ -2,42 +2,13 @@ server:
   port: 18080
 
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   config:
     import: optional:classpath:application-secret.yml
   application:
     name: backend
-
-  datasource:
-    url: jdbc:h2:mem:trend_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: 
-
-  h2:
-    console:
-      enabled: true
-
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-
-  data:
-    redis:
-      host: localhost
-      port: 6379
-
-  elasticsearch:
-    uris: http://localhost:9200
-    connection-timeout: 1s
-    socket-timeout: 1s
-
   batch:
-    jdbc:
-      initialize-schema: always
     job:
       enabled: false
 
@@ -52,4 +23,56 @@ public-data:
 
 gemini:
   api-key: ${GEMINI_API_KEY:}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 4
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      kis:
+        base-config: default
+      upbit:
+        base-config: default
+      exchangerate:
+        base-config: default
+        sliding-window-size: 5
+        wait-duration-in-open-state: 20s
+      publicdata:
+        base-config: default
+        sliding-window-size: 5
+        wait-duration-in-open-state: 30s
+      gemini:
+        base-config: default
+        sliding-window-size: 5
+        wait-duration-in-open-state: 45s
+      korail:
+        base-config: default
+        sliding-window-size: 6
+        wait-duration-in-open-state: 15s
+
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+    instances:
+      kis:
+        max-attempts: 3
+        wait-duration: 500ms
+      upbit:
+        max-attempts: 2
+        wait-duration: 300ms
+      exchangerate:
+        max-attempts: 2
+        wait-duration: 500ms
+
 

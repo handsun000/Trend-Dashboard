@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   db:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: trend-dashboard-db
     environment:
       POSTGRES_USER: trend_user
@@ -12,6 +10,11 @@ services:
       - "5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trend_user -d trend_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: always
 
   elasticsearch:
@@ -32,15 +35,27 @@ services:
         fi;
         docker-entrypoint.sh eswrapper
       "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     restart: always
 
   redis:
-    image: redis:7
+    image: redis:7-alpine
     container_name: trend-dashboard-redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     restart: always
 
 volumes:
   db_data:
   es_data:
+

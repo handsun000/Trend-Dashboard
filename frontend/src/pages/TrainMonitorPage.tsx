@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { Client } from '@stomp/stompjs';
-import SockJS from 'sockjs-client';
+import { useStompSubscription } from '@/contexts/WebSocketContext';
 import { Train, Smartphone, Lock } from 'lucide-react';
+
 import type { TrainSchedule, LoginSession, MonitorEvent, BookingMode } from '@/types/korail';
 import SniperRadarCard from '@/components/korail/SniperRadarCard';
 import TrainSearchBar from '@/components/korail/TrainSearchBar';
@@ -80,53 +80,24 @@ export default function TrainMonitorPage() {
     fetchMonitorStatus();
   }, []);
 
-  // 2. WebSocket STOMP 구독 (/topic/train-monitor)
-  useEffect(() => {
-    let client: Client | null = null;
-    try {
-      client = new Client({
-        webSocketFactory: () => new SockJS('/ws'),
-        reconnectDelay: 3000,
-        heartbeatIncoming: 4000,
-        heartbeatOutgoing: 4000,
-        onConnect: () => {
-          client?.subscribe('/topic/train-monitor', (message) => {
-            if (message.body) {
-              try {
-                const event: MonitorEvent = JSON.parse(message.body);
-                setActiveMonitor(event);
+  // 2. WebSocket STOMP 구독 (/topic/train-monitor) via unified WebSocketContext
+  useStompSubscription<MonitorEvent>('/topic/train-monitor', (event) => {
+    if (!event) return;
+    setActiveMonitor(event);
 
-                if (event.status === 'SUCCESS_RESERVE' || event.status === 'SUCCESS_WAITLIST') {
-                  playSound('success');
-                  setSuccessModal({ open: true, event });
-                  toast.success(`🎉 ${event.message}`, {
-                    theme: 'dark',
-                    autoClose: 10000,
-                  });
-                } else if (event.status === 'STOPPED') {
-                  setActiveMonitor(null);
-                  toast.info('모니터링이 종료되었습니다.');
-                }
-              } catch (e) {
-                console.error(e);
-              }
-            }
-          });
-        },
+    if (event.status === 'SUCCESS_RESERVE' || event.status === 'SUCCESS_WAITLIST') {
+      playSound('success');
+      setSuccessModal({ open: true, event });
+      toast.success(`🎉 ${event.message}`, {
+        theme: 'dark',
+        autoClose: 10000,
       });
-      client.activate();
-    } catch (e) {
-      console.warn('STOMP init failed:', e);
+    } else if (event.status === 'STOPPED') {
+      setActiveMonitor(null);
+      toast.info('모니터링이 종료되었습니다.');
     }
+  });
 
-    return () => {
-      if (client) {
-        try {
-          client.deactivate();
-        } catch {}
-      }
-    };
-  }, []);
 
   const fetchSession = async () => {
     try {

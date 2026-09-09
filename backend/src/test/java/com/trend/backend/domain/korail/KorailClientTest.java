@@ -1,6 +1,7 @@
 package com.trend.backend.domain.korail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trend.backend.client.config.ExternalApiProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -10,7 +11,9 @@ class KorailClientTest {
 
     private final KorailStationRegistry stationRegistry = new KorailStationRegistry();
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final KorailClient korailClient = new KorailClient(stationRegistry, objectMapper);
+    private final ExternalApiProperties.KorailProperties korailProperties = new ExternalApiProperties.KorailProperties();
+    private final KorailClient korailClient = new KorailClient(stationRegistry, objectMapper, korailProperties);
+
 
     @Test
     @DisplayName("1. 서울 -> 부산 (실서버 실시간 열차 조회)")

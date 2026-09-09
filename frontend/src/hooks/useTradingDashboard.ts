@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { Client } from '@stomp/stompjs';
-import SockJS from 'sockjs-client';
+import { useStompSubscription } from '../contexts/WebSocketContext';
 import { useAlerts } from './useAlerts';
+
 
 export interface UserAlert {
   id: number;
@@ -127,88 +127,53 @@ export function useTradingDashboard() {
     return () => window.removeEventListener('select-stock', handleSelectStock);
   }, []);
 
-  // STOMP WebSocket for real-time tick streaming
-  useEffect(() => {
-    let stompClient: Client | null = null;
-    try {
-      stompClient = new Client({
-        webSocketFactory: () => new SockJS('/ws'),
-        reconnectDelay: 5000,
-        heartbeatIncoming: 4000,
-        heartbeatOutgoing: 4000,
-        onStompError: (frame) => {
-          console.warn('Dashboard STOMP Error:', frame);
-        },
-        onWebSocketError: (event) => {
-          console.warn('Dashboard WebSocket Error:', event);
-        }
+  // STOMP WebSocket for real-time tick streaming via unified WebSocketContext
+  const handleIncomingTick = useCallback((tick: any) => {
+    if (!tick) return;
+
+    // 1. Stock Tick Match
+    if (selectedStockRef.current && tick.ticker === selectedStockRef.current.ticker) {
+      const prev = prevStockPriceRef.current;
+      const next = tick.price;
+      if (next > prev) {
+        setStockFlash('up');
+        setTimeout(() => setStockFlash(null), 800);
+      } else if (next < prev) {
+        setStockFlash('down');
+        setTimeout(() => setStockFlash(null), 800);
+      }
+      prevStockPriceRef.current = next;
+      setCurrentStockPrice(next);
+
+      setStockData((prevArr) => {
+        const updated = [...prevArr, { time: tick.time || new Date().toLocaleTimeString(), price: next }];
+        return updated.slice(-25);
       });
-
-      stompClient.onConnect = () => {
-        stompClient?.subscribe('/topic/ticks', (message) => {
-          if (message.body) {
-            try {
-              const tick = JSON.parse(message.body);
-              
-              // 1. Stock Tick Match
-              if (selectedStockRef.current && tick.ticker === selectedStockRef.current.ticker) {
-                const prev = prevStockPriceRef.current;
-                const next = tick.price;
-                if (next > prev) {
-                  setStockFlash('up');
-                  setTimeout(() => setStockFlash(null), 800);
-                } else if (next < prev) {
-                  setStockFlash('down');
-                  setTimeout(() => setStockFlash(null), 800);
-                }
-                prevStockPriceRef.current = next;
-                setCurrentStockPrice(next);
-
-                setStockData((prevArr) => {
-                  const updated = [...prevArr, { time: tick.time || new Date().toLocaleTimeString(), price: next }];
-                  return updated.slice(-25);
-                });
-              }
-
-              // 2. Crypto Tick Match
-              if (selectedCryptoRef.current && tick.ticker === selectedCryptoRef.current.ticker) {
-                const prev = prevCryptoPriceRef.current;
-                const next = tick.price;
-                if (next > prev) {
-                  setCryptoFlash('up');
-                  setTimeout(() => setCryptoFlash(null), 800);
-                } else if (next < prev) {
-                  setCryptoFlash('down');
-                  setTimeout(() => setCryptoFlash(null), 800);
-                }
-                prevCryptoPriceRef.current = next;
-                setCurrentCryptoPrice(next);
-
-                setCryptoData((prevArr) => {
-                  const updated = [...prevArr, { time: tick.time || new Date().toLocaleTimeString(), price: next }];
-                  return updated.slice(-25);
-                });
-              }
-            } catch (err) {
-              console.error('Tick parse error:', err);
-            }
-          }
-        });
-      };
-
-      stompClient.activate();
-    } catch (e) {
-      console.warn('Failed to initialize Dashboard WebSocket client:', e);
     }
 
-    return () => {
-      try {
-        if (stompClient) stompClient.deactivate();
-      } catch (e) {
-        // ignore
+    // 2. Crypto Tick Match
+    if (selectedCryptoRef.current && tick.ticker === selectedCryptoRef.current.ticker) {
+      const prev = prevCryptoPriceRef.current;
+      const next = tick.price;
+      if (next > prev) {
+        setCryptoFlash('up');
+        setTimeout(() => setCryptoFlash(null), 800);
+      } else if (next < prev) {
+        setCryptoFlash('down');
+        setTimeout(() => setCryptoFlash(null), 800);
       }
-    };
+      prevCryptoPriceRef.current = next;
+      setCurrentCryptoPrice(next);
+
+      setCryptoData((prevArr) => {
+        const updated = [...prevArr, { time: tick.time || new Date().toLocaleTimeString(), price: next }];
+        return updated.slice(-25);
+      });
+    }
   }, []);
+
+  useStompSubscription('/topic/ticks', handleIncomingTick);
+
 
   return {
     isModalOpen,

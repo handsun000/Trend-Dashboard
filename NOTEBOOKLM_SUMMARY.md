@@ -74,6 +74,61 @@
 * **공공데이터 국토부 실거래가 & 날씨 다층 캐싱** ([`usePublicData.ts`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/hooks/usePublicData.ts)):
   * 지역/거래유형/페이지별 스마트 캐싱 적용으로 시군구 전환 시 0초 렌더링
 
+### ⑤ WebSocket 단일 멀티플렉싱 및 지수 백오프 스마트 재연결 처리
+* **단일 STOMP Client 멀티플렉싱** ([`WebSocketContext.tsx`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/contexts/WebSocketContext.tsx)):
+  * `App.tsx`, `useTradingDashboard.ts`, `TrainMonitorPage.tsx`의 중복 소켓 인스턴스를 단일 물리적 연결로 일원화
+  * 컴포넌트 생명주기와 연동된 선언적 구독 훅 `useStompSubscription<T>(topic, callback)` 제공
+* **지수 백오프 (Exponential Backoff with Jitter) 재연결 엔진**:
+  * 초기 1.5초 ➡️ 3초 ➡️ 6초 ➡️ 최대 30초 한도 (±20% 무작위 지터로 Thundering Herd 방지)
+  * 브라우저 `online` 이벤트 즉시 복구, `visibilitychange`(탭 활성화/절전 모드 복귀) 연결 자동 검증
+* **자동 재구독 (Auto-Resubscription) 보장**:
+  * 네트워크 일시 단절 후 재연결 시 기존 모든 활성 토픽 구독 자동 복원
+* **오류 투명성 UI 피드백** ([`ConnectionStatusBadge.tsx`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/components/common/ConnectionStatusBadge.tsx), [`ConnectionOfflineBanner.tsx`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/components/common/ConnectionOfflineBanner.tsx)):
+  * 사이드바 하드코딩 제거 ➡️ 실시간 LIVE(활성 토픽 수), 재연결 중(N회차/초), OFFLINE 실제 상태 반영
+  * 헤더 툴바 뱃지 및 상단 비간섭형 재연결 배너 + `[지금 재연결]` 원클릭 트리거
+
+### ⑥ External API Client 계층 정리 및 표준화 (Backend)
+* **독립 통신 계층 `com.trend.backend.client` 패키지 신설**:
+  * `batch/`에 혼재되어 있던 외부 API 클라이언트들을 독립 계층으로 분리하여 아키텍처 계층 정합성 확립
+* **표준 RestClient 및 타임아웃 방어 기제** ([`RestClientConfig.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/client/config/RestClientConfig.java)):
+  * `ConnectTimeout(4s)`, `ReadTimeout(10s)` 표준 적용으로 외부 장애 시 백엔드 스레드 풀 고갈 방지
+  * `User-Agent: Trend-Dashboard-Backend/1.0` 공통 헤더 자동 적용
+* **타입 세이프 프로퍼티 계층화** ([`ExternalApiProperties.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/client/config/ExternalApiProperties.java)):
+  * `@ConfigurationProperties` 기반 `KisProperties`, `UpbitProperties`, `PublicDataProperties`, `KorailProperties`, `GeminiProperties` 중앙 집중 관리
+* **공통 인터페이스 및 상태 진단 체계** ([`ExternalApiClient.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/client/common/ExternalApiClient.java), [`ExternalApiStatusController.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/client/ExternalApiStatusController.java)):
+  * 모든 외부 클라이언트(`KIS`, `UPBIT`, `EXCHANGE_RATE`, `MOLIT`, `KMA`, `KORAIL`, `GEMINI`)의 `checkHealth()` 표준화
+### ⑦ Resilience4j 서킷 브레이커 & 지능형 재시도 기반 장애 격리 표준화 (Backend)
+* **Resilience4j 인프라 도입 및 AOP 연동** ([`build.gradle`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/build.gradle), [`application.yml`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/resources/application.yml)):
+  * `resilience4j-spring-boot3:2.2.0` 및 `spring-boot-starter-aop` 연동으로 선언적 장애 격리 인프라 구축
+  * 카운트 기반 슬라이딩 윈도우(10), 최소 호출 수(4), 실패율 임계치(50%), OPEN 대기 시간(10~45초) 세분화 적용
+* **금융/시세/환율/AI 외부 API 연동망 보호 및 Fallback 전략**:
+  * **KIS (한국투자증권)**: 일시적 네트워크 순단 시 지수 백오프 3회 재시도(`@Retry`) + 서킷 OPEN 시 캐시된 최근 종가/시세로 안전 격리(`@CircuitBreaker`)
+  * **Upbit**: 2회 재시도 + 장애 시 직전 실시간 체결가 스냅샷 폴백
+  * **ExchangeRate (글로벌 환율)**: 2회 재시도 + 외부 ER-API 장애 시 업비트 USDT 테더 환율 자동 환산 폴백
+  * **Gemini AI**: 서킷 OPEN 시 기본 기술적 분석 요약 메시지 안내로 AI 먹통 방지
+* **[절대 원칙 준수] 코레일(Korail) 무가짜(No-Fake) 투명 장애 격리 (`AGENTS.md`)**:
+  * 서킷 브레이커 연동 시에도 **절대로 가짜 PNR, 난수 잔여석, 가짜 예약 성공을 날조하지 않음**
+  * 서킷 OPEN 전이 시 장애 상태와 쿨다운 정보를 날것 그대로 솔직하게 반환하여 스레드 고갈 및 코레일 본사 계정 블락 방지
+* **실시간 서킷 브레이커 모니터링 체계** ([`ResilienceConfig.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/client/config/ResilienceConfig.java), [`ExternalApiStatusController.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/client/ExternalApiStatusController.java)):
+  * `CircuitBreakerMonitor` 컴포넌트를 통해 프로바이더명 자동 매핑 및 실시간 서킷 상태(`CLOSED`, `OPEN`, `HALF_OPEN`), 실패율(`failureRate`) 산출
+  * `/api/v1/system/external-apis` 엔드포인트 응답 DTO에 서킷 브레이커 상태를 실시간 노출하여 관측 가능성(Observability) 극대화
+
+### ⑧ Development / Production 설정 분리 및 Full-Stack Docker 오케스트레이션 구축 (Infrastructure)
+* **스프링 부트 다중 프로파일 분리** ([`application.yml`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/resources/application.yml), [`application-dev.yml`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/resources/application-dev.yml), [`application-prod.yml`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/resources/application-prod.yml)):
+  * `application.yml`: 공통 설정 (Resilience4j, RestClient 타임아웃 등), 기본 활성 프로파일 `dev` 지정
+  * `application-dev.yml`: H2 인메모리 DB, 웹 콘솔 활성화, JPA `create-drop`, SQL 포맷팅 및 상세 DEBUG 로깅, 로컬 포트 연동
+  * `application-prod.yml`: PostgreSQL 연동, HikariCP 커넥션 풀 최적화(`TrendHikariPool`, max 10, idle 5, timeout 30s), JPA `update`, INFO 레벨 운영 로깅, Docker 내부 서비스 네트워크 연동
+* **프론트엔드 환경변수 분리 및 리버스 프록시 연동**:
+  * [`.env.development`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/.env.development) / [`.env.production`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/.env.production): `VITE_API_BASE_URL` 및 `VITE_WS_URL` 분리
+  * [`apiClient.ts`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/lib/apiClient.ts) 및 [`WebSocketContext.tsx`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/contexts/WebSocketContext.tsx) 환경변수 동적 바인딩
+  * [`nginx.conf`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/nginx.conf): HTML5 SPA History 라우팅, `/api/` REST 및 `/ws` STOMP WebSocket(Upgrade/Connection 헤더) 무중단 리버스 프록시
+* **Multi-stage Dockerfile 및 원클릭 오케스트레이션**:
+  * [`backend/Dockerfile`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/Dockerfile): Temurin 21 JDK 빌더 ➡️ JRE Alpine 경량 런타임, Python 3 및 코레일 모바일 스텔스 브릿지 스크립트 번들링
+  * [`frontend/Dockerfile`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/Dockerfile): Node 20 빌더 ➡️ Nginx Alpine 서빙
+  * [`docker-compose.yml`](file:///c:/dev/IdeaProjects/Trend-Dashboard/docker-compose.yml): 로컬 개발 인프라(PostgreSQL, Elasticsearch+nori, Redis) 헬스체크 연동
+  * [`docker-compose.prod.yml`](file:///c:/dev/IdeaProjects/Trend-Dashboard/docker-compose.prod.yml): 풀스택 원클릭 오케스트레이션 (`db`, `redis`, `elasticsearch`, `backend`, `frontend`), `service_healthy` 선행 의존성, 헬스체크 진단 엔드포인트 연동
+  * [`.env.docker.example`](file:///c:/dev/IdeaProjects/Trend-Dashboard/.env.docker.example): 프로덕션 환경변수 가이드 템플릿 제공
+
 ---
 
 ## 4. 핵심 도메인 아키텍처
@@ -107,11 +162,18 @@
 
 ## 5. 차기 로드맵 과제 (우선순위 순)
 
-1. **[진행 예정] WebSocket 재연결 처리 개선 (Frontend)**:
-   * 네트워크 순단, 절전 모드 복귀 시 STOMP/SockJS 자동 지수 백오프(Exponential Backoff) 재연결 안정화
-2. **[진행 예정] External API Client 계층 정리 (Backend)**:
-   * KIS, Upbit, Korail 외부 클라이언트 계층의 통일된 인터페이스 추상화 및 설정 분리
-3. **[진행 예정] 외부 API 장애 처리 표준화 (Backend)**:
-   * 타임아웃, 점검 시간, Rate Limit 등에 대한 일관된 Resilience4j / 서킷 브레이커 패턴 도입
-4. **[진행 예정] Development / Production 설정 분리 (Infrastructure)**:
-   * `application-dev.yml`과 `application-prod.yml` 환경 분리 및 Docker 컨테이너 프로파일링
+1. **[완료] WebSocket 재연결 처리 개선 (Frontend)**:
+   * STOMP/SockJS 단일 소켓 멀티플렉싱, 지수 백오프 자동 재연결, 자동 재구독, 전역 연결 상태 UI 피드백 완료
+2. **[완료] External API Client 계층 정리 (Backend)**:
+   * `com.trend.backend.client` 패키지 신설, 표준 RestClient 타임아웃, ConfigurationProperties, ExternalApiClient 공통 헬스체크 인터페이스 및 `/api/v1/system/external-apis` 진단 엔드포인트 구축 완료
+3. **[완료] 외부 API 장애 처리 표준화 (Backend)**:
+   * Resilience4j 서킷 브레이커(`CircuitBreaker`) 및 지수 백오프 재시도(`Retry`) 적용 완료 (KIS, Upbit, 글로벌 환율, Gemini, 국토부/기상청, 코레일)
+   * `/api/v1/system/external-apis` 실시간 서킷 상태(`CLOSED`/`OPEN`/`HALF_OPEN`) 및 실패율 모니터링 연동 완료
+4. **[완료] Development / Production 설정 분리 (Infrastructure)**:
+   * `application-dev.yml`과 `application-prod.yml` 환경 분리, 프론트엔드 `.env` 및 Nginx 리버스 프록시, Multi-stage Dockerfile 및 Full-Stack Docker Compose 오케스트레이션 완료
+5. **[진행 예정] 코레일 실시간 모바일 세션 핫 리프레시 및 알림 고도화 (Domain)**:
+   * 코레일 세션 자동 갱신(Keep-Alive), 실시간 취소표/예매대기 체결 시 브라우저 Web Notification & 사운드 알림 연동
+
+
+
+

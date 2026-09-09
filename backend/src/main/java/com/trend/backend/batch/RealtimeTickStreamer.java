@@ -1,7 +1,11 @@
 package com.trend.backend.batch;
 
+import com.trend.backend.client.kis.KisApiClient;
+import com.trend.backend.client.upbit.UpbitApiClient;
+import com.trend.backend.client.upbit.UpbitTickerDto;
 import com.trend.backend.domain.UserAlert;
 import com.trend.backend.domain.UserAlertRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;

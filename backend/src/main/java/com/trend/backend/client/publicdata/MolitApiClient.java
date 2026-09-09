@@ -1,10 +1,13 @@
-package com.trend.backend.batch;
+package com.trend.backend.client.publicdata;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trend.backend.client.common.ExternalApiClient;
+import com.trend.backend.client.common.ExternalApiHealth;
+import com.trend.backend.client.config.ExternalApiProperties;
 import com.trend.backend.domain.PublicDataDto;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -19,22 +22,44 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-public class MolitApiClient {
+public class MolitApiClient implements ExternalApiClient {
 
-    @Value("${public-data.service-key:dummy_service_key}")
-    private String serviceKey;
-
-    private final RestClient restClient = RestClient.builder()
-            .messageConverters(converters -> {
-                converters.removeIf(c -> c instanceof org.springframework.http.converter.StringHttpMessageConverter);
-                converters.add(0, new org.springframework.http.converter.StringHttpMessageConverter(StandardCharsets.UTF_8));
-            })
-            .build();
+    private final ExternalApiProperties.PublicDataProperties publicDataProperties;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final com.trend.backend.domain.RegionalCodeRegistry regionalCodeRegistry;
 
-    public MolitApiClient(com.trend.backend.domain.RegionalCodeRegistry regionalCodeRegistry) {
+    public MolitApiClient(
+            ExternalApiProperties.PublicDataProperties publicDataProperties,
+            ClientHttpRequestFactory clientHttpRequestFactory,
+            com.trend.backend.domain.RegionalCodeRegistry regionalCodeRegistry) {
+        this.publicDataProperties = publicDataProperties;
         this.regionalCodeRegistry = regionalCodeRegistry;
+        this.restClient = RestClient.builder()
+                .requestFactory(clientHttpRequestFactory)
+                .messageConverters(converters -> {
+                    converters.removeIf(c -> c instanceof org.springframework.http.converter.StringHttpMessageConverter);
+                    converters.add(0, new org.springframework.http.converter.StringHttpMessageConverter(StandardCharsets.UTF_8));
+                })
+                .build();
+    }
+
+    @Override
+    public String getProviderName() {
+        return "MOLIT";
+    }
+
+    @Override
+    public boolean isConfigured() {
+        return publicDataProperties.isConfigured();
+    }
+
+    @Override
+    public ExternalApiHealth checkHealth() {
+        if (!isConfigured()) {
+            return ExternalApiHealth.unconfigured("MOLIT", "국토교통부 공공데이터 service-key 미설정 (모의 실거래가 데이터 모드 동작)");
+        }
+        return ExternalApiHealth.healthy("MOLIT", "국토부 실거래가 Open API 인증키 정상 등록됨", 0);
     }
 
     // 전국 주요 핵심 지역 법정동 코드 매핑
@@ -688,13 +713,15 @@ public class MolitApiClient {
     }
 
     private String getDecodedKey() {
-        if (serviceKey == null || serviceKey.isBlank()) return "";
+        String key = publicDataProperties.getServiceKey();
+        if (key == null || key.isBlank()) return "";
         try {
-            return URLDecoder.decode(serviceKey, StandardCharsets.UTF_8);
+            return URLDecoder.decode(key, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            return serviceKey;
+            return key;
         }
     }
+
 
     private double parseDouble(String str, double defaultVal) {
         if (str == null || str.isBlank()) return defaultVal;

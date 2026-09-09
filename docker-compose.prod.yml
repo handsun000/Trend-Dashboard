@@ -1,0 +1,125 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: trend-prod-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trend_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trend_password}
+      POSTGRES_DB: ${POSTGRES_DB:-trend_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - prod_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trend_user} -d ${POSTGRES_DB:-trend_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - trend-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: trend-prod-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - prod_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - trend-network
+
+  elasticsearch:
+    image: elasticsearch:8.10.2
+    container_name: trend-prod-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "${ES_PORT:-9200}:9200"
+    volumes:
+      - prod_es_data:/usr/share/elasticsearch/data
+    command: >
+      bash -c "
+        if [ ! -d plugins/analysis-nori ]; then
+          bin/elasticsearch-plugin install --batch analysis-nori;
+        fi;
+        docker-entrypoint.sh eswrapper
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - trend-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trend-prod-backend
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-trend_db}
+      - POSTGRES_USER=${POSTGRES_USER:-trend_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-trend_password}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ELASTICSEARCH_URIS=http://elasticsearch:9200
+      - KIS_APP_KEY=${KIS_APP_KEY:-}
+      - KIS_APP_SECRET=${KIS_APP_SECRET:-}
+      - KIS_DOMAIN=${KIS_DOMAIN:-https://openapivts.koreainvestment.com:29443}
+      - DATA_GO_KR_SERVICE_KEY=${DATA_GO_KR_SERVICE_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    ports:
+      - "18080:18080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:18080/api/v1/system/external-apis || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - trend-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: trend-prod-frontend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - trend-network
+
+volumes:
+  prod_db_data:
+  prod_redis_data:
+  prod_es_data:
+
+networks:
+  trend-network:
+    driver: bridge

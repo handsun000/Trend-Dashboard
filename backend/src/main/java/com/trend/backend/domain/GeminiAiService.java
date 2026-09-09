@@ -1,30 +1,23 @@
 package com.trend.backend.domain;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trend.backend.client.gemini.GeminiApiClient;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class GeminiAiService {
 
-    @Value("${gemini.api-key:}")
-    private String apiKey;
-
+    private final GeminiApiClient geminiApiClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(6))
-            .build();
+
 
     // 15-minute TTL In-Memory Cache to protect Gemini Free Tier quota (15 RPM / 1500 RPD)
     private final Map<String, CachedAnalysis> cache = new ConcurrentHashMap<>();
@@ -54,7 +47,7 @@ public class GeminiAiService {
             return cached.result;
         }
 
-        if (apiKey == null || apiKey.trim().isEmpty() || apiKey.startsWith("dummy") || newsItems == null || newsItems.isEmpty()) {
+        if (!geminiApiClient.isConfigured() || newsItems == null || newsItems.isEmpty()) {
             log.info("[Gemini AI] API key not configured or news list empty. Generating rule-based AI analysis for {}", targetName);
             GeminiDto.AnalysisResult fallback = generateRuleBasedAnalysis(ticker, targetName, newsItems);
             cache.put(cacheKey, new CachedAnalysis(fallback));
@@ -105,43 +98,12 @@ public class GeminiAiService {
                 }
                 """, targetName, ticker, newsContext.toString());
 
-        Map<String, Object> requestBodyMap = new HashMap<>();
-        Map<String, Object> contentMap = new HashMap<>();
-        contentMap.put("parts", List.of(Map.of("text", prompt)));
-        requestBodyMap.put("contents", List.of(contentMap));
-
-        Map<String, Object> genConfig = new HashMap<>();
-        genConfig.put("temperature", 0.2);
-        genConfig.put("responseMimeType", "application/json");
-        requestBodyMap.put("generationConfig", genConfig);
-
-        String jsonPayload = objectMapper.writeValueAsString(requestBodyMap);
-
-        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey.trim();
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(endpoint))
-                .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(10))
-                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                .build();
-
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (response.statusCode() != 200) {
-            throw new RuntimeException("Gemini API returned status: " + response.statusCode() + " body: " + response.body());
-        }
-
-        GeminiDto.Response geminiResponse = objectMapper.readValue(response.body(), GeminiDto.Response.class);
-        if (geminiResponse.getCandidates() == null || geminiResponse.getCandidates().isEmpty()) {
-            throw new RuntimeException("No candidates returned from Gemini");
-        }
-
-        String rawJson = geminiResponse.getCandidates().get(0).getContent().getParts().get(0).getText();
+        String rawJson = geminiApiClient.generateContentWithJsonSchema(prompt);
         log.debug("[Gemini AI] Raw AI Response: {}", rawJson);
 
         return objectMapper.readValue(rawJson, GeminiDto.AnalysisResult.class);
     }
+
 
     public GeminiDto.AnalysisResult generateRuleBasedAnalysis(String ticker, String targetName, List<MarketNewsDto.NewsItem> newsItems) {
         if (newsItems == null || newsItems.isEmpty()) {

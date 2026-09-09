@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import GlobalSearch from './GlobalSearch';
 import { Bell, RefreshCw } from 'lucide-react';
 import axios from 'axios';
+import { ConnectionStatusBadge } from './common/ConnectionStatusBadge';
 
 export default function Header() {
   const [loading, setLoading] = useState(false);
@@ -24,9 +25,12 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-3">
+        <ConnectionStatusBadge mode="compact" showTopics={true} />
+
         <button
           onClick={handleRunBatch}
           disabled={loading}
+
           className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-emerald-400 to-teal-300 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-black rounded-xl text-xs shadow-[0_2px_12px_rgba(16,185,129,0.2)] active:scale-95 transition-all duration-200 disabled:opacity-50"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />

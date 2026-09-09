@@ -1,4 +1,4 @@
-package com.trend.backend.batch;
+package com.trend.backend.client.upbit;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;

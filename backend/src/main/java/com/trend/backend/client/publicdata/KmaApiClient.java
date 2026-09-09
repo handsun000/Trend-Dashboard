@@ -1,10 +1,13 @@
-package com.trend.backend.batch;
+package com.trend.backend.client.publicdata;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trend.backend.client.common.ExternalApiClient;
+import com.trend.backend.client.common.ExternalApiHealth;
+import com.trend.backend.client.config.ExternalApiProperties;
 import com.trend.backend.domain.PublicDataDto;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -19,13 +22,39 @@ import java.util.*;
 
 @Slf4j
 @Component
-public class KmaApiClient {
+public class KmaApiClient implements ExternalApiClient {
 
-    @Value("${public-data.service-key:dummy_service_key}")
-    private String serviceKey;
-
-    private final RestClient restClient = RestClient.create();
+    private final ExternalApiProperties.PublicDataProperties publicDataProperties;
+    private final RestClient restClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public KmaApiClient(
+            ExternalApiProperties.PublicDataProperties publicDataProperties,
+            ClientHttpRequestFactory clientHttpRequestFactory) {
+        this.publicDataProperties = publicDataProperties;
+        this.restClient = RestClient.builder()
+                .requestFactory(clientHttpRequestFactory)
+                .build();
+    }
+
+    @Override
+    public String getProviderName() {
+        return "KMA";
+    }
+
+    @Override
+    public boolean isConfigured() {
+        return publicDataProperties.isConfigured();
+    }
+
+    @Override
+    public ExternalApiHealth checkHealth() {
+        if (!isConfigured()) {
+            return ExternalApiHealth.unconfigured("KMA", "기상청 공공데이터 service-key 미설정 (지능형 관측소 시뮬레이션 모드 동작)");
+        }
+        return ExternalApiHealth.healthy("KMA", "기상청 초단기실황 Open API 인증키 정상 등록됨", 0);
+    }
+
 
     // 전국 주요 17개 권역 기상청 ASOS 종관기상관측소 지점 매핑
     public static final Map<String, String> REGION_STATION_MAP = new LinkedHashMap<>();
@@ -510,13 +539,15 @@ public class KmaApiClient {
     }
 
     private String getDecodedKey() {
-        if (serviceKey == null || serviceKey.isBlank()) return "";
+        String key = publicDataProperties.getServiceKey();
+        if (key == null || key.isBlank()) return "";
         try {
-            return URLDecoder.decode(serviceKey, StandardCharsets.UTF_8);
+            return URLDecoder.decode(key, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            return serviceKey;
+            return key;
         }
     }
+
 
     private double parseDouble(String str, double defaultVal) {
         if (str == null || str.isBlank()) return defaultVal;

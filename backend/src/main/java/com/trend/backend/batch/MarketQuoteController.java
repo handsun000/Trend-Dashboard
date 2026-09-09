@@ -1,6 +1,13 @@
 package com.trend.backend.batch;
 
+import com.trend.backend.client.kis.KisApiClient;
+import com.trend.backend.client.kis.KisPriceDto;
+import com.trend.backend.client.upbit.UpbitApiClient;
+import com.trend.backend.client.upbit.UpbitOrderbookDto;
+import com.trend.backend.client.upbit.UpbitTickerDto;
 import lombok.RequiredArgsConstructor;
+
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

@@ -1,5 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, Settings, TrendingUp, Building2, BellRing, Sparkles, Train } from 'lucide-react';
+import { ConnectionStatusBadge } from './common/ConnectionStatusBadge';
+
 
 interface SidebarProps {
   activeView: string;
@@ -104,19 +106,17 @@ export default function Sidebar({ activeView, onViewChange }: SidebarProps) {
 
       {/* Connection Status Footnote */}
       <div className="p-3.5 m-3 rounded-2xl bg-white/[0.02] border border-white/5 backdrop-blur-md">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Market Data Pipe</span>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            <span className="text-[10px] font-bold text-emerald-400">Connected</span>
-          </div>
+          <ConnectionStatusBadge mode="compact" showTopics={true} />
         </div>
         <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono mt-1 pt-1 border-t border-white/5">
           <span>KIS & Upbit 286</span>
-          <span className="text-emerald-400 font-bold">STOMP 1s</span>
+          <span className="text-slate-400 font-bold">STOMP 1s</span>
         </div>
       </div>
     </div>
   );
 }
+
 

@@ -1,8 +1,9 @@
 package com.trend.backend.domain;
 
-import com.trend.backend.batch.KisApiClient;
-import com.trend.backend.batch.UpbitApiClient;
-import com.trend.backend.batch.UpbitTickerDto;
+import com.trend.backend.client.kis.KisApiClient;
+import com.trend.backend.client.upbit.UpbitApiClient;
+import com.trend.backend.client.upbit.UpbitTickerDto;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;

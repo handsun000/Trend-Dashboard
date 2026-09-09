@@ -2,9 +2,11 @@ package com.trend.backend.domain.korail;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.trend.backend.client.common.ExternalApiClient;
+import com.trend.backend.client.common.ExternalApiHealth;
+import com.trend.backend.client.config.ExternalApiProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -22,23 +24,52 @@ import java.util.*;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class KorailClient {
+public class KorailClient implements ExternalApiClient {
 
     private final KorailStationRegistry stationRegistry;
     private final ObjectMapper objectMapper;
+    private final ExternalApiProperties.KorailProperties korailProperties;
 
-    @Value("${korail.member-no:}")
-    private String defaultMemberNo;
+    private static final String DEFAULT_BRIDGE_SCRIPT = "backend/src/main/resources/korail_bridge.py";
 
-    @Value("${korail.password:}")
-    private String defaultPassword;
-
-    @Value("${korail.phone-no:}")
-    private String defaultPhoneNo;
-
-    private static final String BRIDGE_SCRIPT = "backend/src/main/resources/korail_bridge.py";
+    private String resolveBridgeScript() {
+        String[] candidatePaths = {
+            DEFAULT_BRIDGE_SCRIPT,
+            "src/main/resources/korail_bridge.py",
+            "korail_bridge.py",
+            "/app/korail_bridge.py"
+        };
+        for (String path : candidatePaths) {
+            if (new java.io.File(path).exists()) {
+                return path;
+            }
+        }
+        return DEFAULT_BRIDGE_SCRIPT;
+    }
 
     private volatile KorailDto.LoginSession currentSession = null;
+
+    @Override
+    public String getProviderName() {
+        return "KORAIL";
+    }
+
+    @Override
+    public boolean isConfigured() {
+        return korailProperties.isConfigured() || (currentSession != null && currentSession.isLoggedIn());
+    }
+
+    @Override
+    public ExternalApiHealth checkHealth() {
+        if (currentSession != null && currentSession.isLoggedIn()) {
+            return ExternalApiHealth.healthy("KORAIL", "코레일 실서버 라이브 세션 활성화됨 (회원: " + currentSession.getCustomerName() + ")", 0);
+        }
+        if (korailProperties.isConfigured()) {
+            return ExternalApiHealth.degraded("KORAIL", "비밀키/계정 설정 완료, 모바일 세션 핫 연결 대기 중", 0);
+        }
+        return ExternalApiHealth.unconfigured("KORAIL", "코레일 회원번호/비밀번호 미설정 (로그인 모달을 통해 직접 연결 가능)");
+    }
+
 
     /**
      * 파이썬 모바일 통신 브릿지 커맨드 실행 엔진
@@ -46,7 +77,7 @@ public class KorailClient {
     private String runBridge(String... args) throws Exception {
         List<String> cmd = new ArrayList<>();
         cmd.add("python");
-        cmd.add(BRIDGE_SCRIPT);
+        cmd.add(resolveBridgeScript());
         cmd.addAll(Arrays.asList(args));
 
         ProcessBuilder pb = new ProcessBuilder(cmd);
@@ -71,10 +102,10 @@ public class KorailClient {
     public synchronized KorailDto.LoginSession login(String memberNo, String password) {
         try {
             if (memberNo == null || memberNo.isBlank()) {
-                memberNo = defaultMemberNo;
+                memberNo = korailProperties.getMemberNo();
             }
             if (password == null || password.isBlank()) {
-                password = defaultPassword;
+                password = korailProperties.getPassword();
             }
 
             log.info("코레일 모바일 실서버 로그인 시도: 회원번호={}", memberNo);
@@ -90,7 +121,8 @@ public class KorailClient {
                 String customerNo = rootNode.path("customerNo").asText("");
                 String mbCrdNo = rootNode.path("memberNo").asText(memberNo);
                 String mobileKey = rootNode.path("key").asText("");
-                String phoneNo = rootNode.path("phoneNo").asText(defaultPhoneNo);
+                String phoneNo = rootNode.path("phoneNo").asText(korailProperties.getPhoneNo());
+
 
                 this.currentSession = KorailDto.LoginSession.builder()
                         .loggedIn(true)
@@ -142,7 +174,7 @@ public class KorailClient {
                         .customerName(rootNode.path("customerName").asText("회원"))
                         .customerNo(rootNode.path("customerNo").asText(""))
                         .key(rootNode.path("key").asText(""))
-                        .phoneNo(rootNode.path("phoneNo").asText(defaultPhoneNo))
+                        .phoneNo(rootNode.path("phoneNo").asText(korailProperties.getPhoneNo()))
                         .message("코레일 실서버 활성 세션")
                         .build();
                 return this.currentSession;
@@ -286,7 +318,7 @@ public class KorailClient {
         try {
             String targetPhone = (phoneNo != null && !phoneNo.isBlank()) ? phoneNo : session.getPhoneNo();
             if (targetPhone == null || targetPhone.isBlank()) {
-                targetPhone = defaultPhoneNo;
+                targetPhone = korailProperties.getPhoneNo();
             }
 
             log.info("예매대기 신청 실서버 시도: 열차={}, 전화번호={}", train.getTrainNo(), targetPhone);

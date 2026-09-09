@@ -1,8 +1,9 @@
 package com.trend.backend.domain;
 
-import com.trend.backend.batch.ExchangeRateClient;
-import com.trend.backend.batch.KmaApiClient;
-import com.trend.backend.batch.MolitApiClient;
+import com.trend.backend.client.exchangerate.ExchangeRateClient;
+import com.trend.backend.client.publicdata.KmaApiClient;
+import com.trend.backend.client.publicdata.MolitApiClient;
+
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -1,7 +1,8 @@
 package com.trend.backend.search;
 
-import com.trend.backend.batch.UpbitApiClient;
-import com.trend.backend.batch.UpbitMarketDto;
+import com.trend.backend.client.upbit.UpbitApiClient;
+import com.trend.backend.client.upbit.UpbitMarketDto;
+
 import com.trend.backend.elasticsearch.StockDocument;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;

@@ -1,4 +1,4 @@
-package com.trend.backend.batch;
+package com.trend.backend.client.kis;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
