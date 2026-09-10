@@ -1,8 +1,8 @@
-# Trend-Dashboard 종합 개발 현황 및 명세서 (2026-09-08 최신화)
+# Trend-Dashboard 종합 개발 현황 및 명세서 (2026-09-10 최신화)
 
 > **NotebookLM 소스 동기화용 공식 프로젝트 명세서**  
 > 대상 Notebook ID: `b7753663-82ee-48be-a993-c1293c32b686`  
-> 본 문서는 새로운 대화창이나 새 에이전트 세션에서도 즉시 프로젝트 전반을 파악하고 작업을 연속성 있게 이어갈 수 있도록 모든 아키텍처, 구현 내역, 로드맵을 총망라합니다.
+> 본 문서는 새로운 대화창이나 새 에이전트 세션에서도 즉시 프로젝트 전반을 파악하고 작업을 연속성 있게 이어갈 수 있도록 모든 아키텍처, 구현 내역, 로드맵, 그리고 최상위 UI/UX 디자인 철학을 총망라합니다.
 
 ---
 
@@ -13,7 +13,7 @@
   1. **멀티 마켓 트레이딩 인텔리전스**: KIS(한국투자증권) 국내 주식, Upbit(업비트) 가상자산 실시간 시세, Gemini 1.5 Flash AI 감성 분석, 국토부 실거래가 및 기상청 날씨 공공데이터를 결합한 초고속 단일 창(Single-Pane 100vh) 대시보드
   2. **코레일(KTX/SRT) 스텔스 사냥기**: 코레일 모바일 공식 전산망과의 100% 실서버 통신 기반 취소표 낚아채기 및 2-Step 정규 예매대기(Waitlist) 자동화 시스템
 * **기술 스택**:
-  * **Backend**: Java 21, Spring Boot 3.3, Spring WebSocket (STOMP/SockJS), Spring Data JPA, H2 / PostgreSQL, RestClient, Google Gemini 1.5 Flash REST API, Gradle
+  * **Backend**: Java 21, Spring Boot 3.3, Spring WebSocket (STOMP/SockJS), Spring Data JPA, H2 / PostgreSQL, RestClient, Google Gemini 1.5 Flash REST API, Resilience4j, Gradle
   * **Frontend**: React 19, TypeScript 5.8, Vite 8.2, TailwindCSS, TanStack Query v5 (@tanstack/react-query), Lightweight-Charts 5.2 (TradingView), Lucide Icons, React-Toastify
 
 ---
@@ -31,7 +31,27 @@
 
 ---
 
-## 3. 최근 완료된 4대 핵심 아키텍처 개편 내역 (2026-09)
+## 2.1 [절대 원칙] UI/UX 디자인 아이덴티티: Numa & ERA Residence 연속 조립 스크롤리텔링
+
+* **Numa (numa.uprock.pro) 연속 조립 메커니즘 (단순 슬라이드 쇼 영구 금지)**:
+  * **무(無)에서 유(有)로의 실시간 UI 프레임 조립**: 첫 화면(Progress 0.0)은 상단 헤더, 하단 전광판, 테두리 장식을 완전히 배제한 극도의 순수 여백(Pure Kinfolk Void)으로 시작. 스크롤 진행에 따라 상단 헤더가 내려앉고 하단 바가 상승 도킹.
+  * **60fps 무지연 시네마틱 웜업 프리로더 (0% ➡️ 100%)**: 진입 시 750ms 동안 GPU 3D 가속 및 폰트 렌더링을 사전 예열하여 휠 조작 첫 프레임부터 버터 같은 부드러움 보장.
+  * **사방 외곽에서 날아와 결합되는 자석 캡슐 클라우드 (Magnetic Assembly)**: 거치적거리는 중앙 더미 박스를 전면 배제하고, 6대 실시간 데이터 캡슐(1초 틱, 1분봉 캔들, 10호가창, Gemini 84% 감성 링, 환율, 코레일 스나이퍼) 자체가 3차원 공간에서 회전하며 날아와 중앙으로 자석 결합.
+  * **수평 키네틱 타이포그래피 & AI 3줄 브리핑 도킹**: 거대 볼드 세리프 `SUB-SECOND LATENCY & COGNITIVE AI` 수평 유영 및 시차를 둔 수평 트랙 카드 스택.
+  * **타임라인 룰러 스크럽 & 실시간 시계열 SVG 파형 모핑**: 상단 시간 룰러와 하단 국토부/코레일 실거래가 SVG 파동 곡선이 스크롤 위상에 따라 실시간 출렁이며 형태 모핑.
+  * **스크롤 트래블 2.7배 확장 및 페이즈별 홀드(HOLD Zone) 구간 확보**: 성급하게 지나가지 않고 도킹된 데이터를 여유롭게 감상할 수 있는 안정적 정지 머무름 구간 구축.
+* **Nothing.tech 감성 & 앰비언트 다크 메쉬**:
+  * 단순 블랙을 배제한 `#080D1A` 딥 슬레이트 및 `#0B132B` 딥 네이비 베이스.
+  * 에메랄드/시안/틸 네온 앰비언트 글로우 블러(`blur-[140px]~[180px]`) 및 초정밀 글래스모피즘(`bg-white/[0.03]`, `backdrop-blur-xl`, `border-white/10`).
+* **100vh 스크롤 제로 레이아웃 (Single-Pane 100vh Layout)**:
+  * 브라우저 전체 스크롤을 배제(`overflow: hidden`, `height: 100vh`)하여 모든 핵심 데이터와 차트가 단일 화면 내에서 한눈에 조망되는 고밀도 프로 뷰.
+* **숫자 떨림 방지 (`tabular-nums`) & 미세 펄스 애니메이션 (`Micro Price Pulse`)**:
+  * 1초 단위 틱 시세 요동 시 레이아웃 덜덜거림을 차단하는 고정폭 숫자(`font-variant-numeric: tabular-nums`).
+  * 가격 변동 시 0.7초간 은은하게 번지는 에메랄드(`.flash-up`) 및 로즈(`.flash-down`) 잔상 트랜지션.
+
+---
+
+## 3. 최근 완료된 핵심 아키텍처 개편 내역 (2026-09)
 
 ### ① API /v1 표준 버저닝 및 공통 에러 응답 규격화
 * **Backend 표준 응답 규격**:
@@ -171,7 +191,13 @@
    * `/api/v1/system/external-apis` 실시간 서킷 상태(`CLOSED`/`OPEN`/`HALF_OPEN`) 및 실패율 모니터링 연동 완료
 4. **[완료] Development / Production 설정 분리 (Infrastructure)**:
    * `application-dev.yml`과 `application-prod.yml` 환경 분리, 프론트엔드 `.env` 및 Nginx 리버스 프록시, Multi-stage Dockerfile 및 Full-Stack Docker Compose 오케스트레이션 완료
-5. **[진행 예정] 코레일 실시간 모바일 세션 핫 리프레시 및 알림 고도화 (Domain)**:
+1. **[진행 예정] 홈 스크롤리텔링 페이즈별 순차 디테일 핀포인트 고도화 (Phase 1 ➡️ Phase 5)**:
+   * **Phase 1 (The Kinfolk Void)**: 킨포크 타이포그래피 미세 자간, 초기 진입 트랜지션 및 앰비언트 글로우 극대화
+   * **Phase 2 (Magnetic Cloud Assembly)**: 6대 실시간 데이터 캡슐 인터랙션, 3D 틸트 깊이감, 호버 마이크로 펄스 및 스프링 물리 강화
+   * **Phase 3 (Kinetic Typography & AI)**: 수평 키네틱 타이포 궤적 및 Gemini AI 3줄 브리핑 카드 스택 고도화
+   * **Phase 4 (Wave Morphing & PropTech)**: 타임라인 룰러 및 실시간 SVG 파형 출렁임과 코레일 사냥 핀 연동 극대화
+   * **Phase 5 (Master Workspace Gateway)**: 최종 마스터 워크스페이스 그리드 도킹 및 룸 진입 트랜지션
+2. **[진행 예정] 코레일 실시간 모바일 세션 핫 리프레시 및 알림 고도화 (Domain)**:
    * 코레일 세션 자동 갱신(Keep-Alive), 실시간 취소표/예매대기 체결 시 브라우저 Web Notification & 사운드 알림 연동
 
 
