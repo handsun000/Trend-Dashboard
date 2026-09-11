@@ -28,12 +28,16 @@ export interface LoginSession {
   memberNo?: string;
   customerName?: string;
   customerNo?: string;
+  phoneNo?: string;
   message?: string;
 }
 
 export interface MonitorEvent {
   taskId: string;
   trainNo: string;
+  targetTrainNos?: string[];
+  targetTrains?: TrainSchedule[];
+  targetTrainCount?: number;
   trainType: string;
   route: string;
   departureTime: string;

@@ -310,13 +310,18 @@ def reserve_seat(train_data: dict, seat_type: str = "1") -> dict:
     else:
         err_msg = json_res.get('h_msg_txt', json_res.get('errMsg', '좌석 예약 실패'))
         err_code = json_res.get('h_msg_cd', '')
+        if err_code == 'P058' or '로그아웃' in err_msg:
+            session_data["loggedIn"] = False
+            session_data["message"] = f"세션 만료: [{err_code}] {err_msg}"
+            save_session(session, session_data)
         return {
             "success": False,
             "message": f"[{err_code}] {err_msg}" if err_code else err_msg
         }
 
-def reserve_waitlist(train_data: dict, phone_no: str = "") -> dict:
-    """1102 예매대기 가신청 ➡️ ReservationWait 2단계 정규 등록"""
+
+def reserve_waitlist(train_data: dict, phone_no: str = "", include_special: str = "N") -> dict:
+    """1102 예매대기 가신청 ➡️ ReservationWait 2단계 정규 등록 (특실포함, SMS안내)"""
     session, session_data = load_session()
     if not session_data.get("loggedIn") or not session_data.get("key"):
         return {
@@ -332,6 +337,12 @@ def reserve_waitlist(train_data: dict, phone_no: str = "") -> dict:
     # [1단계] TicketReservation (txtJobId: 1102)
     token1 = generate_dynapath_token(build_default_token_settings())
     url1 = f"{BASE_URL}/classes/com.korail.mobile.certification.TicketReservation"
+
+    dpt_dt = train_data.get('departureDate', '')
+    run_dt = train_data.get('runDate', '') or dpt_dt
+    dpt_tm = train_data.get('departureTimeRaw', '')
+    if not dpt_tm and train_data.get('departureTime'):
+        dpt_tm = train_data.get('departureTime', '').replace(':', '') + '00'
 
     params1 = {
         'Device': DEVICE,
@@ -352,14 +363,14 @@ def reserve_waitlist(train_data: dict, phone_no: str = "") -> dict:
         'txtJrnyCnt': '1',
         'txtJrnySqno1': '001',
         'txtJrnyTpCd1': '11',
-        'txtDptDt1': train_data.get('departureDate', ''),
+        'txtDptDt1': dpt_dt,
         'txtDptRsStnCd1': train_data.get('departureStationCode', ''),
-        'txtDptTm1': train_data.get('departureTimeRaw', ''),
+        'txtDptTm1': dpt_tm,
         'txtArvRsStnCd1': train_data.get('arrivalStationCode', ''),
         'txtTrnNo1': train_data.get('trainNo', ''),
-        'txtRunDt1': train_data.get('runDate', train_data.get('departureDate', '')),
+        'txtRunDt1': run_dt,
         'txtTrnClsfCd1': train_data.get('trainClassCode', '00'),
-        'txtPsrmClCd1': '1',  # 예매대기는 일반실 전용
+        'txtPsrmClCd1': '1',  # 예매대기 1단계는 일반실 기본
         'txtTrnGpCd1': train_data.get('trainGroupCode', '100'),
         'txtPsgTpCd1': '1',
         'txtDiscKndCd1': '000',
@@ -386,6 +397,10 @@ def reserve_waitlist(train_data: dict, phone_no: str = "") -> dict:
     if json1.get('strResult') != 'SUCC':
         err_msg = json1.get('h_msg_txt', json1.get('errMsg', '예매대기 접수 실패'))
         err_code = json1.get('h_msg_cd', '')
+        if err_code == 'P058' or '로그아웃' in err_msg:
+            session_data["loggedIn"] = False
+            session_data["message"] = f"세션 만료: [{err_code}] {err_msg}"
+            save_session(session, session_data)
         return {
             "success": False,
             "message": f"예매대기 1단계 접수 실패: [{err_code}] {err_msg}" if err_code else f"예매대기 1단계 실패: {err_msg}"
@@ -398,17 +413,18 @@ def reserve_waitlist(train_data: dict, phone_no: str = "") -> dict:
             "message": "코레일 실서버에서 예매대기 PNR 접수번호가 채번되지 않았습니다."
         }
 
-    # [2단계] ReservationWait 정식 등록
+    # [2단계] ReservationWait 정식 등록 (ReservationWaitActivity 호환)
     token2 = generate_dynapath_token(build_default_token_settings())
     url2 = f"{BASE_URL}/classes/com.korail.mobile.reservationWait.ReservationWait"
 
+    psrm_val = 'Y' if str(include_special).upper() in ['Y', 'TRUE', '1'] else 'N'
     params2 = {
         'Device': DEVICE,
         'Version': VERSION,
         'Sid': get_sid(),
         'Key': session_data.get('key', ''),
         'txtPnrNo': pnr_no,
-        'txtPsrmClChgFlg': 'N',
+        'txtPsrmClChgFlg': psrm_val,
         'txtSmsSndFlg': 'Y',
         'txtCpNo': target_phone,
     }
@@ -471,23 +487,38 @@ if __name__ == '__main__':
         sys.stdout.buffer.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
 
     elif cmd == "reserve":
-        # sys.argv[2]: train json string, sys.argv[3]: seat_type (1 or 2)
-        train_json_str = sys.argv[2] if len(sys.argv) > 2 else "{}"
+        # sys.argv[2]: train json or base64, sys.argv[3]: seat_type (1 or 2)
+        train_arg = sys.argv[2] if len(sys.argv) > 2 else ""
         seat_type = sys.argv[3] if len(sys.argv) > 3 else "1"
-        try:
-            train_dict = json.loads(train_json_str)
-        except Exception:
-            train_dict = {}
+        train_dict = {}
+        if train_arg:
+            try:
+                import base64
+                decoded = base64.b64decode(train_arg).decode('utf-8')
+                train_dict = json.loads(decoded)
+            except Exception:
+                try:
+                    train_dict = json.loads(train_arg)
+                except Exception:
+                    train_dict = {}
         result = reserve_seat(train_dict, seat_type)
         sys.stdout.buffer.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))
 
     elif cmd == "waitlist":
-        # sys.argv[2]: train json string, sys.argv[3]: phone_no
-        train_json_str = sys.argv[2] if len(sys.argv) > 2 else "{}"
+        # sys.argv[2]: train json or base64, sys.argv[3]: phone_no, sys.argv[4]: include_special ("Y" or "N")
+        train_arg = sys.argv[2] if len(sys.argv) > 2 else ""
         phone_no = sys.argv[3] if len(sys.argv) > 3 else ""
-        try:
-            train_dict = json.loads(train_json_str)
-        except Exception:
-            train_dict = {}
-        result = reserve_waitlist(train_dict, phone_no)
+        include_special = sys.argv[4] if len(sys.argv) > 4 else "N"
+        train_dict = {}
+        if train_arg:
+            try:
+                import base64
+                decoded = base64.b64decode(train_arg).decode('utf-8')
+                train_dict = json.loads(decoded)
+            except Exception:
+                try:
+                    train_dict = json.loads(train_arg)
+                except Exception:
+                    train_dict = {}
+        result = reserve_waitlist(train_dict, phone_no, include_special)
         sys.stdout.buffer.write(json.dumps(result, ensure_ascii=False).encode('utf-8'))

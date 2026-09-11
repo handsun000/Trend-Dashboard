@@ -1,5 +1,5 @@
 import React from 'react';
-import { Train, Zap, Square } from 'lucide-react';
+import { Train, Zap, Square, Check, ArrowRight } from 'lucide-react';
 import type { TrainSchedule, MonitorEvent, BookingMode } from '@/types/korail';
 import { LoadingState, EmptyState } from '@/components/common';
 
@@ -8,10 +8,16 @@ interface TrainScheduleListProps {
   searchDate: string;
   isSearching: boolean;
   activeMonitor: MonitorEvent | null;
+  selectedTrainNos: string[];
+  onToggleSelectTrain: (train: TrainSchedule) => void;
+  onSelectAllTrains: () => void;
+  onClearSelectedTrains: () => void;
   onManualReserve: (train: TrainSchedule, seatType: '1' | '2') => void;
   onManualWait: (train: TrainSchedule) => void;
   onStartMonitor: (train: TrainSchedule, modeOverride?: BookingMode) => void;
+  onStartMultiMonitor: (modeOverride?: BookingMode) => void;
   onStopMonitor: () => void;
+  onGoToRadarTab?: () => void;
 }
 
 export const TrainScheduleList: React.FC<TrainScheduleListProps> = ({
@@ -19,16 +25,40 @@ export const TrainScheduleList: React.FC<TrainScheduleListProps> = ({
   searchDate,
   isSearching,
   activeMonitor,
+  selectedTrainNos,
+  onToggleSelectTrain,
+  onSelectAllTrains,
+  onClearSelectedTrains,
   onManualReserve,
   onManualWait,
   onStartMonitor,
+  onStartMultiMonitor,
   onStopMonitor,
+  onGoToRadarTab,
 }) => {
+  const allVisibleSelected = trains.length > 0 && trains.every((t) => selectedTrainNos.includes(t.trainNo));
+
   return (
     <div className="flex-1 min-h-0 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-xl overflow-hidden flex flex-col">
       {/* 테이블 헤더 및 범례 */}
       <div className="px-5 py-3 border-b border-white/10 bg-slate-900/40 flex items-center justify-between shrink-0 text-xs font-mono text-slate-400">
         <div className="flex items-center gap-3">
+          {/* 전체 선택 체크박스 */}
+          {trains.length > 0 && (
+            <button
+              type="button"
+              onClick={allVisibleSelected ? onClearSelectedTrains : onSelectAllTrains}
+              className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                allVisibleSelected
+                  ? 'bg-amber-500 border-amber-400 text-slate-950 font-black'
+                  : 'border-white/30 bg-white/5 hover:border-white/50 text-transparent'
+              }`}
+              title={allVisibleSelected ? '선택 전체 해제' : '조회된 열차 전체 선택'}
+            >
+              <Check className="w-3 h-3 stroke-[3]" />
+            </button>
+          )}
+
           <span className="font-bold text-white">열차 목록</span>
           {searchDate && searchDate.length === 8 && (
             <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 text-[11px]">
@@ -40,6 +70,12 @@ export const TrainScheduleList: React.FC<TrainScheduleListProps> = ({
             </span>
           )}
           <span className="text-[11px] text-slate-400">({trains.length}개 검색됨)</span>
+
+          {selectedTrainNos.length > 0 && (
+            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-bold">
+              🎯 {selectedTrainNos.length}개 선택됨
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-4 text-[11px]">
           <span className="flex items-center gap-1">
@@ -77,18 +113,42 @@ export const TrainScheduleList: React.FC<TrainScheduleListProps> = ({
         ) : (
           trains.map((train) => {
             const isTarget =
-              activeMonitor?.trainNo === train.trainNo && activeMonitor?.status === 'POLLING';
+              activeMonitor?.status === 'POLLING' &&
+              (activeMonitor?.trainNo === train.trainNo ||
+                (activeMonitor?.targetTrainNos && activeMonitor.targetTrainNos.includes(train.trainNo)));
+
+            const isSelected = selectedTrainNos.includes(train.trainNo);
 
             return (
               <div
                 key={train.trainNo}
-                className={`p-4 transition-colors flex items-center justify-between gap-4 ${
-                  isTarget ? 'bg-cyan-950/20 border-l-4 border-cyan-400' : 'hover:bg-white/[0.02]'
+                onClick={() => onToggleSelectTrain(train)}
+                className={`p-4 transition-colors flex items-center justify-between gap-4 cursor-pointer ${
+                  isTarget
+                    ? 'bg-cyan-950/30 border-l-4 border-cyan-400'
+                    : isSelected
+                    ? 'bg-amber-500/[0.05] border-l-4 border-amber-400/80 hover:bg-amber-500/[0.08]'
+                    : 'hover:bg-white/[0.02]'
                 }`}
               >
-                {/* 열차 정보 */}
-                <div className="flex items-center gap-4 w-52 shrink-0">
-                  <div className="p-2.5 rounded-xl bg-slate-800/80 border border-white/10 text-center min-w-[3.5rem]">
+                {/* 열차 정보 + 체크박스 */}
+                <div className="flex items-center gap-3 w-60 shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSelectTrain(train);
+                    }}
+                    className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all shrink-0 ${
+                      isSelected
+                        ? 'bg-amber-500 border-amber-400 text-slate-950 font-black shadow-[0_0_10px_rgba(245,158,11,0.4)]'
+                        : 'border-white/20 bg-white/5 hover:border-white/40 text-transparent'
+                    }`}
+                  >
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  </button>
+
+                  <div className="p-2.5 rounded-xl bg-slate-800/80 border border-white/10 text-center min-w-[3.5rem] shrink-0">
                     <span className="block text-[10px] text-emerald-400 font-bold">
                       {train.trainType}
                     </span>
@@ -134,7 +194,7 @@ export const TrainScheduleList: React.FC<TrainScheduleListProps> = ({
                 </div>
 
                 {/* 좌석 상태 뱃지들 */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
                   {/* 일반실 */}
                   <div className="text-center w-24">
                     <span className="block text-[10px] text-slate-400 mb-0.5">일반실</span>
@@ -188,7 +248,7 @@ export const TrainScheduleList: React.FC<TrainScheduleListProps> = ({
                 </div>
 
                 {/* 액션: 자동 사냥 시작/중지 */}
-                <div className="w-40 shrink-0 flex flex-col gap-1 text-right">
+                <div className="w-40 shrink-0 flex flex-col gap-1 text-right" onClick={(e) => e.stopPropagation()}>
                   {isTarget ? (
                     <button
                       onClick={onStopMonitor}
@@ -204,13 +264,13 @@ export const TrainScheduleList: React.FC<TrainScheduleListProps> = ({
                         className="w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 hover:brightness-110 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
                       >
                         <Zap className="w-3.5 h-3.5 fill-current" />
-                        <span>자동 사냥 시작</span>
+                        <span>단독 사냥 시작</span>
                       </button>
                       {!train.generalAvailable && !train.specialAvailable && (
                         <button
                           onClick={() => onStartMonitor(train, 'WAIT_ONLY')}
                           className="w-full py-1 px-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center justify-center gap-1 transition-all active:scale-95"
-                          title="좌석 매진 시 예매대기(SMS 알림) 슬롯이 오픈되는 즉시 접수"
+                          title="좌석 매진 시 예매대기 슬롯 오픈 즉시 신청"
                         >
                           <span>⏳ 대기만 사냥</span>
                         </button>
@@ -223,6 +283,46 @@ export const TrainScheduleList: React.FC<TrainScheduleListProps> = ({
           })
         )}
       </div>
+
+      {/* 하단 플로팅/도킹 멀티 타깃 사냥 바 */}
+      {selectedTrainNos.length > 0 && (
+        <div className="p-3.5 bg-slate-950/95 border-t border-amber-500/30 backdrop-blur-xl flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-[0_-5px_25px_rgba(0,0,0,0.5)]">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+              <span className="font-bold text-white">
+                선택된 관심 열차: <strong className="text-amber-400 text-sm font-black tabular-nums">{selectedTrainNos.length}</strong>대
+              </span>
+            </div>
+            <button
+              onClick={onClearSelectedTrains}
+              className="text-[11px] text-slate-400 hover:text-rose-300 underline font-mono"
+            >
+              선택 초기화
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {onGoToRadarTab && (
+              <button
+                onClick={onGoToRadarTab}
+                className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-bold text-slate-200 flex items-center gap-1.5 transition-all"
+              >
+                <span>사냥 레이더 탭 보기</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            <button
+              onClick={() => onStartMultiMonitor('AUTO_ALL')}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-400 to-rose-400 text-slate-950 font-black text-xs flex items-center gap-2 shadow-[0_0_25px_rgba(245,158,11,0.4)] hover:brightness-110 active:scale-95 transition-all"
+            >
+              <Zap className="w-4 h-4 fill-current" />
+              <span>선택한 {selectedTrainNos.length}개 열차 동시 사냥 시작 (스텔스 1x)</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

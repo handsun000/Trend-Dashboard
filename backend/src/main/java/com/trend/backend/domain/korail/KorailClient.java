@@ -183,11 +183,18 @@ public class KorailClient implements ExternalApiClient {
             log.debug("디스크 세션 확인 중 예외: {}", e.getMessage());
         }
 
+        // 디스크 세션이 없거나 비활성이더라도 설정 파일에 계정이 등록되어 있다면 자동 핫 로그인 복구
+        if (korailProperties.isConfigured()) {
+            log.info("코레일 활성 세션 없음 -> application-secret 등록 계정으로 자동 핫 로그인 복구 실행");
+            return login(korailProperties.getMemberNo(), korailProperties.getPassword());
+        }
+
         return KorailDto.LoginSession.builder()
                 .loggedIn(false)
                 .message("로그인된 코레일 세션이 없습니다.")
                 .build();
     }
+
 
     /**
      * 열차 실시간 운행 및 좌석/예매대기 현황 조회 (ScheduleView)
@@ -267,8 +274,9 @@ public class KorailClient implements ExternalApiClient {
         try {
             log.info("취소표 즉시 예약(1101) 실서버 시도: 열차={}, 좌석구분={}", train.getTrainNo(), seatType);
             String trainJson = objectMapper.writeValueAsString(train);
+            String trainJsonBase64 = Base64.getEncoder().encodeToString(trainJson.getBytes(StandardCharsets.UTF_8));
 
-            String responseStr = runBridge("reserve", trainJson, seatType != null ? seatType : "1");
+            String responseStr = runBridge("reserve", trainJsonBase64, seatType != null ? seatType : "1");
             JsonNode json = objectMapper.readTree(responseStr);
 
             boolean success = json.path("success").asBoolean(false);
@@ -276,6 +284,25 @@ public class KorailClient implements ExternalApiClient {
             String pnrNo = json.path("pnrNo").asText("");
             String limitDate = json.path("limitDate").asText("");
             String limitTime = json.path("limitTime").asText("");
+
+            // 코레일 실서버 세션 만료(P058) 감지 시 투명 자동 재로그인 및 1회 재시도
+            if (!success && (msg.contains("P058") || msg.contains("로그아웃") || msg.contains("세션"))) {
+                log.warn("코레일 실서버 세션 만료(P058) 감지! 등록 계정으로 즉시 자동 핫 로그인 및 예약 재시도...");
+                this.currentSession = null;
+                if (korailProperties.isConfigured()) {
+                    KorailDto.LoginSession reSession = login(korailProperties.getMemberNo(), korailProperties.getPassword());
+                    if (reSession != null && reSession.isLoggedIn()) {
+                        log.info("자동 재로그인 성공 -> 좌석 예약(1101) 1회 즉시 재시도");
+                        responseStr = runBridge("reserve", trainJsonBase64, seatType != null ? seatType : "1");
+                        json = objectMapper.readTree(responseStr);
+                        success = json.path("success").asBoolean(false);
+                        msg = json.path("message").asText("");
+                        pnrNo = json.path("pnrNo").asText("");
+                        limitDate = json.path("limitDate").asText("");
+                        limitTime = json.path("limitTime").asText("");
+                    }
+                }
+            }
 
             if (success) {
                 log.info("🎉 실서버 취소표 예약 성공! PNR: {}, 결제기한: {} {}", pnrNo, limitDate, limitTime);
@@ -307,6 +334,10 @@ public class KorailClient implements ExternalApiClient {
      * 예매대기 신청 (TicketReservation JobId 1102 ➡️ ReservationWait 2-Step 정규 파이프라인)
      */
     public KorailDto.ReservationResult reserveWaitlist(KorailDto.TrainSchedule train, String phoneNo) {
+        return reserveWaitlist(train, phoneNo, false);
+    }
+
+    public KorailDto.ReservationResult reserveWaitlist(KorailDto.TrainSchedule train, String phoneNo, boolean includeSpecial) {
         KorailDto.LoginSession session = getCurrentSession();
         if (session == null || !session.isLoggedIn()) {
             return KorailDto.ReservationResult.builder()
@@ -321,15 +352,34 @@ public class KorailClient implements ExternalApiClient {
                 targetPhone = korailProperties.getPhoneNo();
             }
 
-            log.info("예매대기 신청 실서버 시도: 열차={}, 전화번호={}", train.getTrainNo(), targetPhone);
+            String specialFlag = includeSpecial ? "Y" : "N";
+            log.info("예매대기 신청 실서버 시도: 열차={}, 전화번호={}, 특실포함={}", train.getTrainNo(), targetPhone, specialFlag);
             String trainJson = objectMapper.writeValueAsString(train);
+            String trainJsonBase64 = Base64.getEncoder().encodeToString(trainJson.getBytes(StandardCharsets.UTF_8));
 
-            String responseStr = runBridge("waitlist", trainJson, targetPhone);
+            String responseStr = runBridge("waitlist", trainJsonBase64, targetPhone, specialFlag);
             JsonNode json = objectMapper.readTree(responseStr);
 
             boolean success = json.path("success").asBoolean(false);
             String msg = json.path("message").asText("");
             String pnrNo = json.path("pnrNo").asText("");
+
+            // 코레일 실서버 세션 만료(P058) 감지 시 투명 자동 재로그인 및 1회 재시도
+            if (!success && (msg.contains("P058") || msg.contains("로그아웃") || msg.contains("세션"))) {
+                log.warn("코레일 실서버 세션 만료(P058) 감지! 등록 계정으로 즉시 자동 핫 로그인 및 예매대기 재시도...");
+                this.currentSession = null;
+                if (korailProperties.isConfigured()) {
+                    KorailDto.LoginSession reSession = login(korailProperties.getMemberNo(), korailProperties.getPassword());
+                    if (reSession != null && reSession.isLoggedIn()) {
+                        log.info("자동 재로그인 성공 -> 예매대기(1102) 1회 즉시 재시도");
+                        responseStr = runBridge("waitlist", trainJsonBase64, targetPhone, specialFlag);
+                        json = objectMapper.readTree(responseStr);
+                        success = json.path("success").asBoolean(false);
+                        msg = json.path("message").asText("");
+                        pnrNo = json.path("pnrNo").asText("");
+                    }
+                }
+            }
 
             if (success) {
                 log.info("🎉 실서버 예매대기 신청 최종 성공! PNR: {}", pnrNo);

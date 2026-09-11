@@ -28,7 +28,11 @@ export const SniperRadarCard: React.FC<SniperRadarCardProps> = ({
             <span className="px-2 py-0.5 rounded-md bg-cyan-400/20 text-cyan-300 text-[10px] font-mono font-bold border border-cyan-400/30">
               SNIPER RADAR ACTIVE
             </span>
+            <span className="px-2 py-0.5 rounded-md bg-emerald-400/15 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-400/30 flex items-center gap-1">
+              <span>📱</span> TELEGRAM ALERT ON
+            </span>
             <h3 className="text-base font-black text-white font-mono">
+
               {activeMonitor.trainType} {activeMonitor.trainNo}호 ({activeMonitor.route})
             </h3>
           </div>

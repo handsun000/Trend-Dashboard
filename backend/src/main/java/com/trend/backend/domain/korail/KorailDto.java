@@ -90,7 +90,9 @@ public class KorailDto {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class MonitorRequest {
-        private String trainNo;          // 대상 열차번호 (예: 305)
+        private String trainNo;          // 단일 대상 열차번호 (하위 호환)
+        private List<String> targetTrainNos; // 다중 대상 열차번호 목록 (예: ["307", "309", "311"])
+        private List<TrainSchedule> targetTrains; // 선택된 대상 열차 전체 객체 목록
         private String departureStation;
         private String arrivalStation;
         private String date;             // YYYYMMDD
@@ -106,6 +108,9 @@ public class KorailDto {
     public static class MonitorEvent {
         private String taskId;
         private String trainNo;
+        private List<String> targetTrainNos;
+        private List<TrainSchedule> targetTrains;
+        private int targetTrainCount;
         private String trainType;
         private String route;
         private String departureTime;

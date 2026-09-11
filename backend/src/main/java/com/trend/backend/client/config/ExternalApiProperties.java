@@ -71,4 +71,19 @@ public class ExternalApiProperties {
             return true; // 공개 API (Open API)
         }
     }
+
+    @Getter
+    @Setter
+    @Configuration
+    @ConfigurationProperties(prefix = "telegram")
+    public static class TelegramProperties {
+        private String botToken = "";
+        private String chatId = "";
+        private boolean enabled = true;
+
+        public boolean isConfigured() {
+            return enabled && botToken != null && !botToken.isBlank() && chatId != null && !chatId.isBlank();
+        }
+    }
 }
+

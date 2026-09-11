@@ -149,6 +149,29 @@
   * [`docker-compose.prod.yml`](file:///c:/dev/IdeaProjects/Trend-Dashboard/docker-compose.prod.yml): 풀스택 원클릭 오케스트레이션 (`db`, `redis`, `elasticsearch`, `backend`, `frontend`), `service_healthy` 선행 의존성, 헬스체크 진단 엔드포인트 연동
   * [`.env.docker.example`](file:///c:/dev/IdeaProjects/Trend-Dashboard/.env.docker.example): 프로덕션 환경변수 가이드 템플릿 제공
 
+### ⑨ 텔레그램 봇 기반 스마트폰 긴급 푸시 알림 모듈 구축 (Notification)
+* **초경량 Fail-Safe 텔레그램 클라이언트** ([`TelegramApiClient.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/client/telegram/TelegramApiClient.java)):
+  * `ExternalApiClient` 표준 인터페이스 구현 (`/api/v1/system/external-apis` 헬스체크 및 봇 유효성 자동 관측)
+  * RestClient 기반 비동기·격리 발송으로 텔레그램 네트워크 장애 시에도 코레일 좌석 선점 트랜잭션 100% 무중단 보장
+* **취소표 즉시 예약(결제대기) 및 예매대기 알림 파이프라인 연동**:
+  * [`KorailMonitorService.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/domain/korail/KorailMonitorService.java): 스텔스 사냥 성공 즉시 열차 정보, 구간, 시간, PNR, 결제기한을 포함한 긴급 결제 안내 푸시 자동 전송
+  * [`KorailController.java`](file:///c:/dev/IdeaProjects/Trend-Dashboard/backend/src/main/java/com/trend/backend/domain/korail/KorailController.java): 수동 즉시 예약 및 예매대기 시에도 스마트폰 알림 발송 + 테스트 엔드포인트(`/api/v1/korail/telegram/test`) 제공
+* **프론트엔드 시각 피드백**:
+  * [`SniperRadarCard.tsx`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/components/korail/SniperRadarCard.tsx): `[📱 TELEGRAM ALERT ON]` 실시간 연동 뱃지 표출
+  * [`ReservationSuccessModal.tsx`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/components/korail/ReservationSuccessModal.tsx): 결제 안내 모달 내 텔레그램 전송 완료 안내 칩 연동
+
+### ⑩ 코레일 다중 열차 스텔스 사냥기 & 탭 분리 UI 구축 (Multi-Target Sniper)
+* **Single-Win 원칙 & WAF 방어 스마트 배치 폴러**:
+  * 1회의 코레일 시간표 조회(10건 반환) 결과 내에서 사용자가 선택한 3~5대 관심 열차를 메모리 상에서 동시 대조(WAF 트래픽 1x 유지).
+  * 1개 열차라도 취소표(즉시예약) 또는 예매대기 선점 성공 시 스마트폰 텔레그램 푸시 알림 발송 후 사냥을 즉시 안전 자동 종료(Single-Win)하여 중복 예약 및 계정 제재 원천 차단.
+  * 1순위 열차 경합 실패 시 동일 루프 내에서 차순위 열차로 즉시 백업 타격(Failover) 보장.
+* **Windows CLI 인자 Base64 직렬화 파이프라인**:
+  * Windows `ProcessBuilder` JSON 따옴표 탈락으로 인한 `[ERR911441]` 원천 해결.
+  * 코레일 실서버 정규 2-Step 예매대기 PNR 번호 정상 발급 실증 완료.
+* **UI 탭 분리 (100vh Single-Pane)**:
+  * `[🚄 01 / 전체 열차 검색]` ([`TrainScheduleList.tsx`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/components/korail/TrainScheduleList.tsx)): 다중 선택 체크박스 및 하단 플로팅 멀티 사냥 제어 바 (`선택한 N개 열차 동시 사냥 시작`).
+  * `[🎯 02 / 사냥 레이더]` ([`SelectedRadarList.tsx`](file:///c:/dev/IdeaProjects/Trend-Dashboard/frontend/src/components/korail/SelectedRadarList.tsx)): 선택된 관심 열차들만 고밀도로 집중 조망하는 전용 트레이딩 뷰 (실시간 폴링 레이턴시, 시도 횟수, 타임스탬프, 원클릭 사냥 중지).
+
 ---
 
 ## 4. 핵심 도메인 아키텍처
@@ -161,8 +184,8 @@
 [KorailController] ──> [KorailMonitorService]
                              │
                              ├─ 1) 실시간 좌석 폴링 (2.8s~4.5s 인간형 지터)
-                             ├─ 2) 취소표 발견 시 ──> 즉시 예약 (txtJobId: 1101)
-                             └─ 3) 좌석 매진 & 대기석 오픈 시 ──> 2-Step 정규 예매대기
+                             ├─ 2) 취소표 발견 시 ──> 즉시 예약 (txtJobId: 1101) ──> [TelegramApiClient] ➡️ 📱 스마트폰 푸시
+                             └─ 3) 좌석 매진 & 대기석 오픈 시 ──> 2-Step 정규 예매대기 ──> [TelegramApiClient] ➡️ 📱 스마트폰 푸시
                                       ├─ Step 1: TicketReservation (txtJobId: 1102) ➡️ PNR 발급
                                       └─ Step 2: ReservationWait (SMS 알림 Y) ➡️ 최종 확정
 ```
@@ -191,14 +214,17 @@
    * `/api/v1/system/external-apis` 실시간 서킷 상태(`CLOSED`/`OPEN`/`HALF_OPEN`) 및 실패율 모니터링 연동 완료
 4. **[완료] Development / Production 설정 분리 (Infrastructure)**:
    * `application-dev.yml`과 `application-prod.yml` 환경 분리, 프론트엔드 `.env` 및 Nginx 리버스 프록시, Multi-stage Dockerfile 및 Full-Stack Docker Compose 오케스트레이션 완료
-1. **[진행 예정] 홈 스크롤리텔링 페이즈별 순차 디테일 핀포인트 고도화 (Phase 1 ➡️ Phase 5)**:
+5. **[완료] 코레일 취소표 선점(결제대기) 및 예매대기 텔레그램 스마트폰 알림 연동 (Notification)**:
+   * 텔레그램 봇 기반 실시간 모바일 푸시 알림 파이프라인 구축 완료 (Fail-safe 격리, PNR/결제기한/코레일톡 결제 안내)
+6. **[진행 예정] 홈 스크롤리텔링 페이즈별 순차 디테일 핀포인트 고도화 (Phase 1 ➡️ Phase 5)**:
    * **Phase 1 (The Kinfolk Void)**: 킨포크 타이포그래피 미세 자간, 초기 진입 트랜지션 및 앰비언트 글로우 극대화
    * **Phase 2 (Magnetic Cloud Assembly)**: 6대 실시간 데이터 캡슐 인터랙션, 3D 틸트 깊이감, 호버 마이크로 펄스 및 스프링 물리 강화
    * **Phase 3 (Kinetic Typography & AI)**: 수평 키네틱 타이포 궤적 및 Gemini AI 3줄 브리핑 카드 스택 고도화
    * **Phase 4 (Wave Morphing & PropTech)**: 타임라인 룰러 및 실시간 SVG 파형 출렁임과 코레일 사냥 핀 연동 극대화
    * **Phase 5 (Master Workspace Gateway)**: 최종 마스터 워크스페이스 그리드 도킹 및 룸 진입 트랜지션
-2. **[진행 예정] 코레일 실시간 모바일 세션 핫 리프레시 및 알림 고도화 (Domain)**:
-   * 코레일 세션 자동 갱신(Keep-Alive), 실시간 취소표/예매대기 체결 시 브라우저 Web Notification & 사운드 알림 연동
+7. **[진행 예정] 코레일 실시간 모바일 세션 핫 리프레시 및 사운드 알림 (Domain)**:
+   * 코레일 세션 자동 갱신(Keep-Alive), 브라우저 오디오 사운드 알림 연동
+
 
 
 

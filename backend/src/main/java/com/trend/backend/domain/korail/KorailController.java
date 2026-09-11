@@ -1,5 +1,6 @@
 package com.trend.backend.domain.korail;
 
+import com.trend.backend.client.telegram.TelegramApiClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ public class KorailController {
     private final KorailClient korailClient;
     private final KorailMonitorService monitorService;
     private final KorailStationRegistry stationRegistry;
+    private final TelegramApiClient telegramApiClient;
 
     /**
      * 1. 코레일 모바일 세션 로그인
@@ -83,17 +85,24 @@ public class KorailController {
             @RequestBody KorailDto.TrainSchedule train,
             @RequestParam(defaultValue = "1") String seatType) {
         KorailDto.ReservationResult result = korailClient.reserveSeat(train, seatType);
+        if (result.isSuccess()) {
+            telegramApiClient.sendReservationAlert(train, result.getPnrNo(), result.getLimitDate(), result.getLimitTime());
+        }
         return ResponseEntity.ok(result);
     }
 
     /**
-     * 6. 수동 즉시 예매대기 신청 (1102 ➡️ ReservationWait)
+     * 6. 수동 즉시 예매대기 신청 (1102 ➡️ ReservationWait 2-Step 정규 파이프라인)
      */
     @PostMapping("/reserve-wait")
     public ResponseEntity<KorailDto.ReservationResult> reserveWait(
             @RequestBody KorailDto.TrainSchedule train,
-            @RequestParam(required = false) String phoneNo) {
-        KorailDto.ReservationResult result = korailClient.reserveWaitlist(train, phoneNo);
+            @RequestParam(required = false) String phoneNo,
+            @RequestParam(defaultValue = "false") boolean includeSpecial) {
+        KorailDto.ReservationResult result = korailClient.reserveWaitlist(train, phoneNo, includeSpecial);
+        if (result.isSuccess()) {
+            telegramApiClient.sendWaitlistAlert(train, result.getPnrNo(), result.getMessage());
+        }
         return ResponseEntity.ok(result);
     }
 
@@ -127,4 +136,18 @@ public class KorailController {
     public ResponseEntity<KorailDto.MonitorEvent> getMonitorStatus() {
         return ResponseEntity.ok(monitorService.getCurrentStatus());
     }
+
+    /**
+     * 10. 텔레그램 연동 알림 테스트 발송
+     */
+    @PostMapping("/telegram/test")
+    public ResponseEntity<Map<String, Object>> testTelegramAlert(
+            @RequestParam(defaultValue = "테스트 알림입니다.") String message) {
+        boolean sent = telegramApiClient.sendTextMessage("🚅 [Trend-Dashboard] 텔레그램 연동 테스트: " + message);
+        return ResponseEntity.ok(Map.of(
+                "success", sent,
+                "message", sent ? "스마트폰 텔레그램으로 테스트 메시지가 발송되었습니다." : "텔레그램 메시지 발송 실패 (설정 또는 네트워크 확인 필요)"
+        ));
+    }
 }
+

@@ -52,9 +52,15 @@ export const ReservationSuccessModal: React.FC<ReservationSuccessModalProps> = (
               {event?.message}
             </span>
           </div>
+
+          <div className="flex items-center gap-2 p-2 rounded-xl bg-cyan-950/50 border border-cyan-500/20 text-cyan-300 text-[11px] font-sans">
+            <span className="text-sm">📱</span>
+            <span>스마트폰 텔레그램으로 결제 안내 및 예약 정보가 즉시 전송되었습니다.</span>
+          </div>
         </div>
 
         <button
+
           onClick={onClose}
           className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-300 text-slate-950 font-black text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all"
         >

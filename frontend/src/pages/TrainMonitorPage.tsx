@@ -2,12 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { useStompSubscription } from '@/contexts/WebSocketContext';
-import { Train, Smartphone, Lock } from 'lucide-react';
+import { Train, Smartphone, Lock, Target, Layers, Sparkles } from 'lucide-react';
 
 import type { TrainSchedule, LoginSession, MonitorEvent, BookingMode } from '@/types/korail';
-import SniperRadarCard from '@/components/korail/SniperRadarCard';
 import TrainSearchBar from '@/components/korail/TrainSearchBar';
 import TrainScheduleList from '@/components/korail/TrainScheduleList';
+import SelectedRadarList from '@/components/korail/SelectedRadarList';
 import KorailLoginModal from '@/components/korail/KorailLoginModal';
 import ReservationSuccessModal from '@/components/korail/ReservationSuccessModal';
 
@@ -21,6 +21,9 @@ export default function TrainMonitorPage() {
 
   // SMS 수신 전화번호 (미입력 시 비밀키 기본값 사용)
   const [phoneNo, setPhoneNo] = useState('');
+
+  // 탭 상태: ALL_SCHEDULES (전체 열차 검색) vs TARGET_RADAR (사냥 레이더 집중 뷰)
+  const [activeTab, setActiveTab] = useState<'ALL_SCHEDULES' | 'TARGET_RADAR'>('ALL_SCHEDULES');
 
   // 검색 파라미터
   const [departureStation, setDepartureStation] = useState('수서');
@@ -36,6 +39,9 @@ export default function TrainMonitorPage() {
   const [searchHour, setSearchHour] = useState('000000');
   const [trains, setTrains] = useState<TrainSchedule[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // 다중 선택된 관심 열차 목록
+  const [selectedTrains, setSelectedTrains] = useState<TrainSchedule[]>([]);
 
   // 모니터링 상태
   const [activeMonitor, setActiveMonitor] = useState<MonitorEvent | null>(null);
@@ -80,9 +86,17 @@ export default function TrainMonitorPage() {
     fetchMonitorStatus();
   }, []);
 
-  // 2. WebSocket STOMP 구독 (/topic/train-monitor) via unified WebSocketContext
+  // 2. WebSocket STOMP 구독 (/topic/train-monitor)
   useStompSubscription<MonitorEvent>('/topic/train-monitor', (event) => {
     if (!event) return;
+
+    // 만약 중지 이벤트라면 activeMonitor 즉시 해제
+    if (event.status === 'STOPPED' || event.status === 'STOPPED_SAFE') {
+      setActiveMonitor(null);
+      toast.info('모니터링이 종료되었습니다.');
+      return;
+    }
+
     setActiveMonitor(event);
 
     if (event.status === 'SUCCESS_RESERVE' || event.status === 'SUCCESS_WAITLIST') {
@@ -92,12 +106,8 @@ export default function TrainMonitorPage() {
         theme: 'dark',
         autoClose: 10000,
       });
-    } else if (event.status === 'STOPPED') {
-      setActiveMonitor(null);
-      toast.info('모니터링이 종료되었습니다.');
     }
   });
-
 
   const fetchSession = async () => {
     try {
@@ -113,6 +123,9 @@ export default function TrainMonitorPage() {
       const res = await axios.get('/api/v1/korail/monitor/status');
       if (res.data && res.data.status && res.data.status !== 'IDLE' && res.data.status !== 'STOPPED') {
         setActiveMonitor(res.data);
+        if (res.data.targetTrains && res.data.targetTrains.length > 0) {
+          setSelectedTrains(res.data.targetTrains);
+        }
       }
     } catch {
       // ignore
@@ -187,6 +200,35 @@ export default function TrainMonitorPage() {
     }
   }, [departureStation, arrivalStation, searchDate, searchHour]);
 
+  // 체크박스 선택/해제 핸들러
+  const handleToggleSelectTrain = useCallback((train: TrainSchedule) => {
+    setSelectedTrains((prev) => {
+      const exists = prev.some((t) => t.trainNo === train.trainNo);
+      if (exists) {
+        return prev.filter((t) => t.trainNo !== train.trainNo);
+      } else {
+        return [...prev, train];
+      }
+    });
+  }, []);
+
+  const handleSelectAllTrains = useCallback(() => {
+    setSelectedTrains((prev) => {
+      const currentNos = new Set(prev.map((t) => t.trainNo));
+      const newlyAdded = trains.filter((t) => !currentNos.has(t.trainNo));
+      return [...prev, ...newlyAdded];
+    });
+  }, [trains]);
+
+  const handleClearSelectedTrains = useCallback(() => {
+    setSelectedTrains([]);
+  }, []);
+
+  const handleRemoveTarget = useCallback((trainNo: string) => {
+    setSelectedTrains((prev) => prev.filter((t) => t.trainNo !== trainNo));
+  }, []);
+
+  // 단일 열차 사냥 시작
   const handleStartMonitor = async (train: TrainSchedule, modeOverride?: BookingMode) => {
     if (!session.loggedIn) {
       toast.warn('자동 사냥 및 예매를 위해 먼저 코레일 계정을 연결(로그인)해 주세요.');
@@ -211,6 +253,7 @@ export default function TrainMonitorPage() {
       });
 
       setActiveMonitor(res.data);
+      setSelectedTrains([train]);
       playSound('beep');
       const modeLabel =
         targetMode === 'WAIT_ONLY'
@@ -219,16 +262,61 @@ export default function TrainMonitorPage() {
           ? '취소표 즉시예약 전용'
           : '스텔스 통합 사냥';
       toast.success(`🚀 [${train.trainType} ${train.trainNo}호] ${modeLabel}가 시작되었습니다!`);
+      setActiveTab('TARGET_RADAR');
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
       toast.error(`모니터링 시작 오류: ${errorMessage}`);
     }
   };
 
+  // 멀티 타깃 동시 사냥 시작 (단일 쿼리 WAF 방어)
+  const handleStartMultiMonitor = async (modeOverride?: BookingMode) => {
+    if (!session.loggedIn) {
+      toast.warn('자동 사냥 및 예매를 위해 먼저 코레일 계정을 연결(로그인)해 주세요.');
+      setIsLoginModalOpen(true);
+      return;
+    }
+
+    if (selectedTrains.length === 0) {
+      toast.warn('동시 사냥을 진행할 열차를 목록에서 최소 1개 이상 체크해 주세요.');
+      return;
+    }
+
+    const targetMode = modeOverride || bookingMode;
+    if (modeOverride) {
+      setBookingMode(modeOverride);
+    }
+
+    const firstTrain = selectedTrains[0];
+    const trainNos = selectedTrains.map((t) => t.trainNo);
+
+    try {
+      const res = await axios.post('/api/v1/korail/monitor/start', {
+        trainNo: firstTrain.trainNo,
+        targetTrainNos: trainNos,
+        targetTrains: selectedTrains,
+        departureStation: firstTrain.departureStation || departureStation,
+        arrivalStation: firstTrain.arrivalStation || arrivalStation,
+        date: firstTrain.departureDate || searchDate,
+        hour: firstTrain.departureTimeRaw || searchHour,
+        phoneNo: phoneNo,
+        bookingMode: targetMode,
+      });
+
+      setActiveMonitor(res.data);
+      playSound('beep');
+      toast.success(`🎯 [${selectedTrains.length}대 열차 동시 사냥] WAF 방어 스텔스 모니터링이 시작되었습니다!`);
+      setActiveTab('TARGET_RADAR');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
+      toast.error(`동시 모니터링 시작 실패: ${errorMessage}`);
+    }
+  };
+
   const handleStopMonitor = async () => {
+    setActiveMonitor(null);
     try {
       await axios.post('/api/v1/korail/monitor/stop');
-      setActiveMonitor(null);
       toast.info('모니터링이 중지되었습니다.');
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
@@ -248,12 +336,31 @@ export default function TrainMonitorPage() {
       if (res.data && res.data.success) {
         playSound('success');
         toast.success(res.data.message);
+        setSuccessModal({
+          open: true,
+          event: {
+            taskId: 'MANUAL',
+            trainNo: train.trainNo,
+            trainType: train.trainType,
+            route: `${train.departureStation} ➡️ ${train.arrivalStation}`,
+            departureTime: train.departureTime,
+            status: 'SUCCESS_RESERVE',
+            attempts: 1,
+            lastResponseTimeMs: 0,
+            message: res.data.message,
+            timestamp: new Date().toLocaleTimeString(),
+          },
+        });
       } else {
+        if (res.data?.message?.includes('P058') || res.data?.message?.includes('로그아웃')) {
+          fetchSession();
+        }
         toast.error(res.data?.message || '예약에 실패했습니다.');
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
       toast.error(`예약 오류: ${errorMessage}`);
+      fetchSession();
     }
   };
 
@@ -264,17 +371,46 @@ export default function TrainMonitorPage() {
       return;
     }
 
+    const targetPhone = phoneNo || session.phoneNo || '';
+    if (!targetPhone) {
+      toast.warn('예매대기 안내를 수신할 휴대폰 번호를 상단 SMS 알림 입력창에 입력해 주세요.');
+      return;
+    }
+    toast.info(`⏳ [${train.trainType} ${train.trainNo}호] 일반실 예매대기 정규 신청 전송 중...`);
+
     try {
-      const res = await axios.post(`/api/v1/korail/reserve-wait?phoneNo=${phoneNo}`, train);
+      const res = await axios.post(
+        `/api/v1/korail/reserve-wait?phoneNo=${encodeURIComponent(targetPhone)}&includeSpecial=false`,
+        train
+      );
       if (res.data && res.data.success) {
         playSound('success');
         toast.success(res.data.message);
+        setSuccessModal({
+          open: true,
+          event: {
+            taskId: 'MANUAL',
+            trainNo: train.trainNo,
+            trainType: train.trainType,
+            route: `${train.departureStation} ➡️ ${train.arrivalStation}`,
+            departureTime: train.departureTime,
+            status: 'SUCCESS_WAITLIST',
+            attempts: 1,
+            lastResponseTimeMs: 0,
+            message: res.data.message,
+            timestamp: new Date().toLocaleTimeString(),
+          },
+        });
       } else {
+        if (res.data?.message?.includes('P058') || res.data?.message?.includes('로그아웃')) {
+          fetchSession();
+        }
         toast.error(res.data?.message || '예매대기 신청에 실패했습니다.');
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : '알 수 없는 오류';
       toast.error(`예매대기 신청 오류: ${errorMessage}`);
+      fetchSession();
     }
   };
 
@@ -285,10 +421,20 @@ export default function TrainMonitorPage() {
 
   const majorStations = ['수서', '부산', '서울', '동대구', '대전', '광명', '울산', '광주송정'];
 
+  const isMonitoringRunning = activeMonitor?.status === 'POLLING';
+  const selectedTrainNos = selectedTrains.map((t) => t.trainNo);
+  const runningTargetCount =
+    activeMonitor?.targetTrainCount ||
+    activeMonitor?.targetTrainNos?.length ||
+    (activeMonitor?.targetTrains?.length ?? 0);
+  const radarBadgeCount = isMonitoringRunning
+    ? (runningTargetCount > 0 ? runningTargetCount : 1)
+    : selectedTrains.length;
+
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 bg-[#0B132B]/95 text-slate-200 overflow-hidden font-sans select-none">
       {/* 1. 상단 글로벌 컨트롤 바 */}
-      <header className="px-6 py-3.5 border-b border-white/10 bg-slate-900/50 backdrop-blur-xl flex items-center justify-between gap-4 shrink-0">
+      <header className="px-6 py-3 border-b border-white/10 bg-slate-900/60 backdrop-blur-xl flex items-center justify-between gap-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-400 text-slate-950 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
             <Train className="w-5 h-5 stroke-[2.5]" />
@@ -296,14 +442,14 @@ export default function TrainMonitorPage() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-black text-white tracking-tight flex items-center gap-1.5">
-                <span>KTX/SRT 스텔스 사냥기</span>
+                <span>KTX/SRT 스텔스 멀티 사냥기</span>
                 <span className="px-1.5 py-0.5 rounded bg-cyan-400/15 text-cyan-300 border border-cyan-400/30 text-[9px] font-mono font-bold">
-                  SNIPER BOT
+                  SNIPER RADAR
                 </span>
               </h2>
             </div>
             <p className="text-[11px] text-slate-400 font-mono">
-              인간형 스마트 지터(2.8s~4.5s) 기반 취소표 & 예매대기 0초 즉시 낚아채기
+              단일 쿼리 기반 3~5대 동시 감시(WAF 1x) · 취소표 즉시 낚아채기 & 텔레그램 즉시 알림
             </p>
           </div>
         </div>
@@ -347,45 +493,130 @@ export default function TrainMonitorPage() {
         </div>
       </header>
 
-      {/* 메인 레이아웃 (스크롤 제로 100vh) */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col p-5 gap-4">
-        {/* 2. 활성 모니터링 레이더 카드 */}
-        {activeMonitor && activeMonitor.status === 'POLLING' && (
-          <SniperRadarCard activeMonitor={activeMonitor} onStopMonitor={handleStopMonitor} />
-        )}
+      {/* 2. 에디토리얼 쿠튀르 탭 셀렉터 바 (100vh Single-Pane 구조) */}
+      <div className="px-6 pt-3 pb-0 bg-slate-950/40 border-b border-white/10 flex items-center justify-between gap-4 shrink-0">
+        <div className="flex items-center gap-2">
+          {/* Tab 1: 전체 열차 검색 */}
+          <button
+            onClick={() => setActiveTab('ALL_SCHEDULES')}
+            className={`relative pb-3 px-3 text-xs font-mono font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'ALL_SCHEDULES'
+                ? 'text-white border-b-2 border-cyan-400'
+                : 'text-slate-400 hover:text-slate-200 border-b-2 border-transparent'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>01 / 전체 열차 검색</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
+              activeTab === 'ALL_SCHEDULES'
+                ? 'bg-cyan-400/20 text-cyan-300 border border-cyan-400/30'
+                : 'bg-white/5 text-slate-400'
+            }`}>
+              {trains.length}
+            </span>
+          </button>
 
-        {/* 3. 검색 툴바 & 퀵 필터 */}
-        <TrainSearchBar
-          departureStation={departureStation}
-          setDepartureStation={setDepartureStation}
-          arrivalStation={arrivalStation}
-          setArrivalStation={setArrivalStation}
-          onSwapStations={swapStations}
-          searchDate={searchDate}
-          setSearchDate={setSearchDate}
-          searchHour={searchHour}
-          setSearchHour={setSearchHour}
-          bookingMode={bookingMode}
-          setBookingMode={setBookingMode}
-          isSearching={isSearching}
-          onSearch={handleSearch}
-          majorStations={majorStations}
-        />
+          {/* Tab 2: 사냥 레이더 */}
+          <button
+            onClick={() => setActiveTab('TARGET_RADAR')}
+            className={`relative pb-3 px-3 text-xs font-mono font-bold flex items-center gap-2 transition-all ${
+              activeTab === 'TARGET_RADAR'
+                ? 'text-white border-b-2 border-amber-400'
+                : 'text-slate-400 hover:text-slate-200 border-b-2 border-transparent'
+            }`}
+          >
+            <Target className="w-3.5 h-3.5 text-amber-400" />
+            <span>02 / 사냥 레이더</span>
+            {radarBadgeCount > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold tabular-nums ${
+                isMonitoringRunning
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              }`}>
+                {isMonitoringRunning ? 'LIVE ' : ''}{radarBadgeCount}대
+              </span>
+            )}
+          </button>
+        </div>
 
-        {/* 4. 열차 목록 테이블 */}
-        <TrainScheduleList
-          trains={trains}
-          searchDate={searchDate}
-          isSearching={isSearching}
-          activeMonitor={activeMonitor}
-          onManualReserve={handleManualReserve}
-          onManualWait={handleManualWait}
-          onStartMonitor={handleStartMonitor}
-          onStopMonitor={handleStopMonitor}
-        />
+        {/* 우측 빠른 상태 지시자 */}
+        <div className="pb-3 flex items-center gap-3 text-xs font-mono">
+          {isMonitoringRunning ? (
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[11px]">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>
+                사냥 중: <strong className="text-white tabular-nums">{activeMonitor?.attempts || 0}회 시도</strong> ({activeMonitor?.lastResponseTimeMs || 0}ms)
+              </span>
+              <button
+                onClick={() => setActiveTab('TARGET_RADAR')}
+                className="px-2 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-400/30 text-[10px] font-bold ml-1 transition-all"
+              >
+                레이더 이동 ➡️
+              </button>
+            </div>
+          ) : (
+            <span className="text-slate-500 text-[11px]">대기 중 (목록에서 열차를 선택 후 사냥을 시작하세요)</span>
+          )}
+        </div>
       </div>
 
-      {/* 5. 코레일 로그인 모달 */}
+      {/* 3. 메인 콘텐츠 영역 (탭 전환) */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        {activeTab === 'ALL_SCHEDULES' ? (
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col p-5 gap-4">
+            {/* 검색 툴바 & 퀵 필터 */}
+            <TrainSearchBar
+              departureStation={departureStation}
+              setDepartureStation={setDepartureStation}
+              arrivalStation={arrivalStation}
+              setArrivalStation={setArrivalStation}
+              onSwapStations={swapStations}
+              searchDate={searchDate}
+              setSearchDate={setSearchDate}
+              searchHour={searchHour}
+              setSearchHour={setSearchHour}
+              bookingMode={bookingMode}
+              setBookingMode={setBookingMode}
+              isSearching={isSearching}
+              onSearch={handleSearch}
+              majorStations={majorStations}
+            />
+
+            {/* 열차 목록 테이블 (체크박스 & 다중 선택 사냥 바 포함) */}
+            <TrainScheduleList
+              trains={trains}
+              searchDate={searchDate}
+              isSearching={isSearching}
+              activeMonitor={activeMonitor}
+              selectedTrainNos={selectedTrainNos}
+              onToggleSelectTrain={handleToggleSelectTrain}
+              onSelectAllTrains={handleSelectAllTrains}
+              onClearSelectedTrains={handleClearSelectedTrains}
+              onManualReserve={handleManualReserve}
+              onManualWait={handleManualWait}
+              onStartMonitor={handleStartMonitor}
+              onStartMultiMonitor={handleStartMultiMonitor}
+              onStopMonitor={handleStopMonitor}
+              onGoToRadarTab={() => setActiveTab('TARGET_RADAR')}
+            />
+          </div>
+        ) : (
+          /* Tab 2: 사냥 레이더 집중 뷰 */
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <SelectedRadarList
+              activeMonitor={activeMonitor}
+              selectedTrains={selectedTrains}
+              onStopMonitor={handleStopMonitor}
+              onRemoveTarget={handleRemoveTarget}
+              onManualReserve={handleManualReserve}
+              onManualWait={handleManualWait}
+              onGoToSearchTab={() => setActiveTab('ALL_SCHEDULES')}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* 4. 코레일 로그인 모달 */}
       <KorailLoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
@@ -397,7 +628,7 @@ export default function TrainMonitorPage() {
         onLogin={handleLogin}
       />
 
-      {/* 6. 성공 축하 모달 */}
+      {/* 5. 성공 축하 모달 */}
       <ReservationSuccessModal
         isOpen={successModal.open}
         onClose={() => setSuccessModal({ open: false })}
